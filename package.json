@@ -4,14 +4,14 @@
   "private": true,
   "type": "module",
   "main": "out/main/index.js",
-  "packageManager": "pnpm@12.16.1",
+  "packageManager": "npm@11.20.0",
   "engines": {
     "node": ">=22",
-    "pnpm": ">=10"
+    "npm": ">=10"
   },
   "scripts": {
     "dev": "electron-vite dev",
-    "build": "pnpm typecheck && electron-vite build",
+    "build": "npm run typecheck && electron-vite build",
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.main.json && tsc --noEmit -p tsconfig.renderer.json && tsc --noEmit -p tsconfig.test.json",
     "lint": "eslint .",

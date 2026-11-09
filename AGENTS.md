@@ -10,13 +10,13 @@ Windows desktop overlay with a customizable widget dashboard (layout editing, sh
 
 ## Commands
 
-- Install: `pnpm install`
-- Develop: `pnpm dev`
-- Build: `pnpm build`
-- Test: `pnpm test`
-- Lint: `pnpm lint`
-- Format check: `pnpm format:check`
-- Format files: `pnpm format`
+- Install: `npm install`
+- Develop: `npm run dev`
+- Build: `npm run build`
+- Test: `npm test`
+- Lint: `npm run lint`
+- Format check: `npm run format:check`
+- Format files: `npm run format`
 
 ## Boundaries
 

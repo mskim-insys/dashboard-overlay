@@ -3,5 +3,5 @@ out/
 dist/
 release/
 coverage/
-pnpm-lock.yaml
+package-lock.json
 WORKSPACE.md

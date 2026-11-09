@@ -4,17 +4,18 @@ A Windows desktop overlay that shows a personal/work dashboard of widgets on top
 
 ## Usage
 
-Run `pnpm install`, then `pnpm dev` to open the starter dashboard in an Electron window. The current window is a development shell; overlay behavior and widgets are future milestones.
+Run `npm install`, then `npm run dev` to open the starter dashboard in an Electron window. The current window is a development shell; overlay behavior and widgets are future milestones.
 
 ## Build and run
 
-Prerequisites: Node.js 22 or newer, pnpm 10 or newer, and Git on Windows.
+Prerequisites: Node.js 22 or newer, npm 10 or newer, and Git on Windows.
 
-- `pnpm dev` starts the Electron window with Vite hot reload.
-- `pnpm build` type-checks and builds the Electron and renderer bundles.
-- `pnpm test` runs the unit tests.
-- `pnpm lint` checks the TypeScript source.
-- `pnpm format:check` checks formatting; `pnpm format` applies it.
+- `npm run dev` starts the Electron window with Vite hot reload.
+- `npm run build` type-checks and builds the Electron and renderer bundles.
+- `npm test` runs the unit tests.
+- `npm run lint` checks the TypeScript source.
+- `npm run format:check` checks formatting; `npm run format` applies it.
+- If switching package managers on an existing checkout, use `npm ci` to clean-install from the committed npm lockfile.
 
 ## Current behavior and limits
 

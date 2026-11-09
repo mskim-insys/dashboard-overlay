@@ -40,3 +40,13 @@ Append-only. Newest entries go at the bottom. Never reuse or renumber an ID.
   - Downgrading Electron to avoid its native extraction helper: rejected because it would trade away current runtime fixes to work around an endpoint policy.
 - Impact / follow-ups:
   - `pnpm dev` could not start here because Windows blocked `index.win32-x64-msvc.node`; if this reproduces in the user's terminal, ask IT for an approved Electron development environment.
+
+## 2026-11-09-05 npm for project package management
+
+- Context: The user requested switching from pnpm to npm after pnpm-based setup did not run successfully.
+- Decision: Use npm for installation, scripts, and dependency locking. Commit `package-lock.json` and remove the pnpm lockfile.
+- Alternatives considered and rejected:
+  - Keep pnpm: rejected at the user's request.
+- Impact / follow-ups:
+  - The initial npm install encountered the existing pnpm-created `node_modules` layout; generating the lockfile in a clean temporary directory and running `npm ci` resolved the package-manager transition.
+  - Verify whether the Electron development window starts after the clean npm installation.
