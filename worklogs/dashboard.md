@@ -5,15 +5,21 @@ Status: in progress
 
 ## Handover
 
-- Current milestone: M0 (acceptance criteria live in the spec)
-- Done and verified: Node.js 24.x is enforced by the package engine and used by the Node type definitions; build, test, lint, and format checks pass on Node 24.22.2.
-- Not done / partial: `pnpm dev` builds the Electron processes and starts Vite, but Electron cannot launch because its Windows native helper is unavailable.
-- First step next session: Ask IT for an approved environment that allows Electron's native helper, then rerun `pnpm dev`.
+- Current milestone: M1 (acceptance criteria live in the spec)
+- Done and verified: M0 is complete. Node.js 22.23.4 and Electron 42.3.3 are pinned; `pnpm dev` opened the Dashboard Overlay window; build, test, lint, and format checks passed.
+- Not done / partial: M1 has not started.
+- First step next session: Implement the overlay shell against the M1 requirements in specs/dashboard.md.
 - Read first: `specs/dashboard.md`, `README.md`, `AGENTS.md`
-- Traps: Keep Electron-only behavior behind the preload bridge; see DECISIONS.md 2026-11-09-03. Do not bypass application-control restrictions; see DECISIONS.md 2026-11-09-04.
-- Open questions: Electron needs to run in an approved Windows environment before M0 can be completed.
+- Traps: Keep Electron-only behavior behind the preload bridge; see DECISIONS.md 2026-11-09-03. Do not bypass application-control restrictions; see DECISIONS.md 2026-11-10-01.
+- Open questions: None.
 
 ## Sessions
+
+### 2026-11-10 · M0
+
+- Changed: Pinned Electron to 42.3.3, aligned the project engine and Node type definitions with Node.js 22.23.4, and updated the runtime decision and setup docs.
+- Verified: With Node.js v22.23.4 and Electron v42.3.3, `pnpm install`, `pnpm build`, `pnpm test`, `pnpm lint`, and `pnpm format:check` passed. `pnpm dev` built main/preload/renderer, started Vite, and opened a window titled "Dashboard Overlay".
+- Risks / open: None for M0. The installed version pins and reason are recorded in DECISIONS.md 2026-11-10-01.
 
 ### 2026-11-09 · M0
 

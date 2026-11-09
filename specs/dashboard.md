@@ -51,7 +51,7 @@ Delivery
 
 ## Acceptance criteria
 
-- [ ] M0: `dev` script opens an Electron window with hot reload; lint and format scripts pass; build and test commands are recorded in AGENTS.md.
+- [x] M0: `dev` script opens an Electron window with hot reload; lint and format scripts pass; build and test commands are recorded in AGENTS.md.
 - [ ] M1 (R1-R4): a translucent panel floats over the desktop, toggles by hotkey and tray, and does not block clicks on other apps in display mode. Checked at 100% and at least one higher DPI scaling.
 - [ ] M2 (R5): placeholder tiles can be rearranged in edit mode and are locked in display mode.
 - [ ] M3 (R6-R9): a launcher board of link widgets can be built, survives quit and relaunch unchanged, and clicking a link opens it. Targets outside the allowlist are refused.

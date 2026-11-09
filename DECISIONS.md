@@ -40,3 +40,14 @@ Append-only. Newest entries go at the bottom. Never reuse or renumber an ID.
   - Downgrading Electron to avoid its native extraction helper: rejected because it would trade away current runtime fixes to work around an endpoint policy.
 - Impact / follow-ups:
   - `pnpm dev` could not start here because Windows blocked `index.win32-x64-msvc.node`; if this reproduces in the user's terminal, ask IT for an approved Electron development environment.
+
+## 2026-11-10-01 Pin Electron 42 for the M0 development environment
+
+- Context: Electron installation hit a Windows application-control issue involving the `extract-zip` package. Disabling application control was recommended but would be a last resort because the app is intended for internal distribution.
+- Decision: Use the installed Node.js 22.23.4 runtime and pin Electron to exactly 42.3.3 for this project; align the Node.js type definitions with Node 22.
+- Alternatives considered and rejected:
+  - Disabling Windows application control: deferred as a last resort because it would be inappropriate for the intended internal deployment environment.
+  - Continuing with Node.js 24 and Electron 45: not selected after the installation issue prevented completing M0.
+- Impact / follow-ups:
+  - Keep Node.js at 22.23.4 and Electron at 42.3.3 until the installation and development workflow is confirmed in the target environment.
+  - This supersedes the M0 runtime follow-up in DECISIONS.md 2026-11-09-04; it does not authorize bypassing Windows application-control policy.
