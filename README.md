@@ -8,7 +8,7 @@ Run `pnpm install`, then `pnpm dev` to open the starter dashboard in an Electron
 
 ## Build and run
 
-Prerequisites: Node.js 22 or newer, pnpm 10 or newer, and Git on Windows.
+Prerequisites: Node.js 24.22.2, pnpm 10 or newer, and Git on Windows.
 
 - `pnpm dev` starts the Electron window with Vite hot reload.
 - `pnpm build` type-checks and builds the Electron and renderer bundles.
