@@ -16,6 +16,17 @@ Prerequisites: Node.js >=22.12 <23, pnpm 10 or newer, and Git on Windows.
 - `pnpm lint` checks the TypeScript source.
 - `pnpm format:check` checks formatting; `pnpm format` applies it.
 
+To verify a fresh clone on Windows, run:
+
+```powershell
+git clone https://github.com/mskim-insys/dashboard-overlay.git
+Set-Location dashboard-overlay
+pnpm install
+pnpm dev
+```
+
+The workspace allows Electron's install script so pnpm can set up its runtime in a fresh clone without an interactive approval.
+
 ## Current behavior and limits
 
 - Status: M0 development scaffold with a basic Electron window and React welcome screen.
