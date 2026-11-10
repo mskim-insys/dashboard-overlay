@@ -1,7 +1,6 @@
 # Spec: dashboard
 
-Status: draft
-Last updated: 2026-11-09
+Last updated: 2026-11-10
 
 ## Goal
 
@@ -39,6 +38,7 @@ Visuals
 Delivery
 
 - R13. A Windows installer (NSIS) built with electron-builder, with an autostart option, auto-update from a GitHub release or an internal share, and a default demo layout.
+- R14. With a second monitor attached, the overlay stays on the primary monitor and nothing breaks. Choosing the monitor is out of scope for now.
 
 ## Constraints
 
@@ -47,12 +47,16 @@ Delivery
 - The dashboard UI is a plain web app. Electron-only behavior sits behind a thin platform adapter so a web build could later turn it into no-ops.
 - Security: `contextIsolation` on, `nodeIntegration` off, minimal preload API. URL opening and app launching only for allowlisted targets. Imported layouts are untrusted input.
 - Selected in M0: Vite, React, TypeScript, and electron-vite. Remaining planned libraries: react-grid-layout, three.js (react-three-fiber), and electron-builder; confirm when their milestones begin.
-- Out of scope for now: GitHub Pages/PWA/Android build, MCP server, widget types other than `link`, multi-monitor, macOS/Linux, code signing.
+- Out of scope for now: GitHub Pages/PWA/Android build, MCP server, widget types other than `link`, monitor selection, macOS/Linux.
+
+## Open questions
+
+- Code signing and SAC on colleagues' PCs; decision needed before M6. Owner: user.
 
 ## Acceptance criteria
 
 - [x] M0: `dev` script opens an Electron window with hot reload; lint and format scripts pass; build and test commands are recorded in AGENTS.md.
-- [ ] M1 (R1-R4): a translucent panel floats over the desktop, toggles by hotkey and tray, and does not block clicks on other apps in display mode. Checked at 100% and at least one higher DPI scaling.
+- [ ] M1 (R1-R4, R14): a translucent panel floats over the desktop, toggles by hotkey and tray, and does not block clicks on other apps in display mode. Manually check a single display at 100% and 125% scaling, plus mixed-scaling dual monitors if an external monitor is available; record the results in worklogs/dashboard.md.
 - [ ] M2 (R5): placeholder tiles can be rearranged in edit mode and are locked in display mode.
 - [ ] M3 (R6-R9): a launcher board of link widgets can be built, survives quit and relaunch unchanged, and clicking a link opens it. Targets outside the allowlist are refused.
 - [ ] M4 (R10): a layout exported on one PC imports on another PC and produces an identical board. A malformed or hostile file is rejected or sanitized, with a preview shown first.
