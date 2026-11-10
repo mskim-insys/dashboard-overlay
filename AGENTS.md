@@ -2,6 +2,8 @@
 
 Windows desktop overlay with a customizable widget dashboard (layout editing, shareable layouts, light 3D visuals). Internal company tool, also used for demos. Windows only.
 
+The main worker AI for this workspace is GPT-6-Luna, abbreviated as Luna.
+
 ## Read first
 
 - README.md for current usage and behavior
