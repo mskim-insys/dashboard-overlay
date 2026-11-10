@@ -1,5 +1,9 @@
 export type WindowState = "hidden" | "display" | "edit";
 
+export function isWindowState(value: unknown): value is WindowState {
+  return value === "hidden" || value === "display" || value === "edit";
+}
+
 export type WindowAction =
   | "hotkey"
   | "show"

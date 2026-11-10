@@ -12,11 +12,14 @@ export interface PointerInteraction {
 export function isPointerInteraction(
   value: unknown,
 ): value is PointerInteraction {
-  if (typeof value !== "object" || value === null) return false;
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
 
-  const interaction = value as Record<string, unknown>;
   return (
-    typeof interaction.interactive === "boolean" &&
-    typeof interaction.dragging === "boolean"
+    "interactive" in value &&
+    typeof value.interactive === "boolean" &&
+    "dragging" in value &&
+    typeof value.dragging === "boolean"
   );
 }
