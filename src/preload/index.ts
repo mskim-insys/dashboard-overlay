@@ -7,17 +7,28 @@ import {
 } from "../shared/ipc";
 import { isWindowState, type WindowState } from "../shared/window-state";
 
-let inputDebugEnabled = false;
+declare const __INPUT_DEBUG_ENABLED__: boolean;
+
+const inputDebugEnabled = __INPUT_DEBUG_ENABLED__;
+
+console.info(`[preload ${new Date().toISOString()}] bridge loaded`, {
+  inputDebugEnabled,
+});
 
 contextBridge.exposeInMainWorld("dashboard", {
   isDesktop: true,
+  inputDebugEnabled,
   getWindowState: (): Promise<WindowState> =>
     ipcRenderer.invoke(IPC_CHANNELS.getWindowState),
   getInputDebugState: async (): Promise<InputDebugSnapshot> => {
     const snapshot: InputDebugSnapshot = await ipcRenderer.invoke(
       IPC_CHANNELS.getInputDebugState,
     );
-    inputDebugEnabled = snapshot.enabled;
+    console.info(`[preload ${new Date().toISOString()}] diagnostics response`, {
+      enabled: snapshot.enabled,
+      startupBanner: snapshot.startupBanner,
+      logFile: snapshot.logFile,
+    });
     return snapshot;
   },
   reportInputDebugEvent: (inputEvent: unknown): void => {
@@ -67,8 +78,14 @@ function isInputDebugSnapshot(value: unknown): value is InputDebugSnapshot {
     typeof value.enabled === "boolean" &&
     "mode" in value &&
     typeof value.mode === "string" &&
-    "lastEvent" in value &&
-    typeof value.lastEvent === "string" &&
+    "startupBanner" in value &&
+    typeof value.startupBanner === "string" &&
+    "logFile" in value &&
+    typeof value.logFile === "string" &&
+    "lastPointerEvent" in value &&
+    typeof value.lastPointerEvent === "string" &&
+    "lastClick" in value &&
+    typeof value.lastClick === "string" &&
     "lastSetIgnoreMouseEvents" in value &&
     typeof value.lastSetIgnoreMouseEvents === "string" &&
     "scaleFactor" in value &&
@@ -78,6 +95,18 @@ function isInputDebugSnapshot(value: unknown): value is InputDebugSnapshot {
     "displayWorkArea" in value &&
     typeof value.displayWorkArea === "string" &&
     "rendererViewport" in value &&
-    typeof value.rendererViewport === "string"
+    typeof value.rendererViewport === "string" &&
+    "hasModeTransitionSinceLaunch" in value &&
+    typeof value.hasModeTransitionSinceLaunch === "boolean" &&
+    "hasEnteredEditModeSinceLaunch" in value &&
+    typeof value.hasEnteredEditModeSinceLaunch === "boolean" &&
+    "modeTransitionCount" in value &&
+    typeof value.modeTransitionCount === "number" &&
+    "lastModeTransitionAt" in value &&
+    typeof value.lastModeTransitionAt === "string" &&
+    "millisecondsSinceLastModeTransition" in value &&
+    typeof value.millisecondsSinceLastModeTransition === "number" &&
+    "initialWindowSetup" in value &&
+    typeof value.initialWindowSetup === "string"
   );
 }

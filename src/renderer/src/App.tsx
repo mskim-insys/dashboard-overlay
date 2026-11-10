@@ -6,6 +6,7 @@ import type {
 } from "../../shared/ipc";
 import type { WindowState } from "../../shared/window-state";
 import { isDesktop } from "./platform";
+import { shouldCapturePointer } from "./pointer-capture";
 
 function isInteractiveTarget(target: EventTarget | null): boolean {
   return (
@@ -18,15 +19,25 @@ export default function App() {
   const [windowState, setWindowState] = useState<WindowState>("display");
   const [clickCount, setClickCount] = useState(0);
   const [webglStatus, setWebglStatus] = useState("Initializing WebGL…");
+  const [bridgeError, setBridgeError] = useState<string | null>(null);
   const [debugSnapshot, setDebugSnapshot] = useState<InputDebugSnapshot>({
-    enabled: false,
+    enabled: __INPUT_DEBUG_ENABLED__,
     mode: "unknown",
-    lastEvent: "none",
+    startupBanner: `renderer build flag=${__INPUT_DEBUG_ENABLED__}; main bootstrap pending`,
+    logFile: "not initialized",
+    lastPointerEvent: "none",
+    lastClick: "none",
     lastSetIgnoreMouseEvents: "not called",
     scaleFactor: 0,
     windowBounds: "unknown",
     displayWorkArea: "unknown",
     rendererViewport: "not reported",
+    hasModeTransitionSinceLaunch: false,
+    hasEnteredEditModeSinceLaunch: false,
+    modeTransitionCount: 0,
+    lastModeTransitionAt: "none",
+    millisecondsSinceLastModeTransition: 0,
+    initialWindowSetup: "not initialized",
   });
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const pointerCaptureRef = useRef<HTMLElement | null>(null);
@@ -56,9 +67,38 @@ export default function App() {
 
   useEffect(() => {
     const bridge = window.dashboard;
-    if (!isDesktop || !bridge) return;
+    const bridgeStatus = {
+      isDesktop,
+      bridgeAvailable: Boolean(bridge),
+      inputDebugEnabled: bridge?.inputDebugEnabled ?? false,
+    };
+    console.info(
+      `[renderer] diagnostics bridge ${JSON.stringify(bridgeStatus)}`,
+    );
+    if (!isDesktop || !bridge) {
+      const error = !bridge
+        ? "Dashboard preload bridge is unavailable. Restart the app; if this persists, check the main-process log."
+        : "Dashboard preload bridge did not identify this as the desktop app.";
+      console.error(error, bridgeStatus);
+      setBridgeError(error);
+      if (__INPUT_DEBUG_ENABLED__) {
+        setDebugSnapshot((snapshot) => ({
+          ...snapshot,
+          enabled: true,
+          startupBanner: `renderer flag=true; preload bridge unavailable (${JSON.stringify(bridgeStatus)})`,
+        }));
+      }
+      return;
+    }
 
     let active = true;
+    if (bridge.inputDebugEnabled) {
+      setDebugSnapshot((snapshot) => ({
+        ...snapshot,
+        enabled: true,
+        startupBanner: `renderer flag=${__INPUT_DEBUG_ENABLED__}; preload flag=${bridge.inputDebugEnabled}; main bootstrap pending`,
+      }));
+    }
     const unsubscribe = bridge.onWindowStateChange(setWindowState);
     const unsubscribeDebug = bridge.onInputDebugChange(setDebugSnapshot);
     void bridge
@@ -72,10 +112,18 @@ export default function App() {
     void bridge
       .getInputDebugState()
       .then((snapshot) => {
+        console.info("[renderer] diagnostics bootstrap", snapshot);
         if (active) setDebugSnapshot(snapshot);
       })
       .catch((error: unknown) => {
         console.error("Failed to get input debug state:", error);
+        if (active && __INPUT_DEBUG_ENABLED__) {
+          setDebugSnapshot((snapshot) => ({
+            ...snapshot,
+            enabled: true,
+            startupBanner: `renderer flag=${__INPUT_DEBUG_ENABLED__}; preload flag=${bridge.inputDebugEnabled}; main bootstrap failed: ${String(error)}`,
+          }));
+        }
       });
 
     return () => {
@@ -90,7 +138,7 @@ export default function App() {
     event: MouseEvent | PointerEvent,
     type: string,
   ): void {
-    if (!debugSnapshot.enabled || !window.dashboard) return;
+    if (!__INPUT_DEBUG_ENABLED__) return;
     const describe = (target: EventTarget | null): string => {
       if (!(target instanceof Element)) return "none";
       const id = target.id ? `#${target.id}` : "";
@@ -114,7 +162,22 @@ export default function App() {
       innerHeight: window.innerHeight,
       devicePixelRatio: window.devicePixelRatio,
     };
-    window.dashboard.reportInputDebugEvent(inputEvent);
+    const eventSummary = `${type} target=${inputEvent.target} client=(${inputEvent.clientX},${inputEvent.clientY}) screen=(${inputEvent.screenX},${inputEvent.screenY}) mode=${windowState}`;
+    console.info(
+      `[input diagnostics renderer event] ${JSON.stringify(inputEvent)}`,
+    );
+    setDebugSnapshot((snapshot) => ({
+      ...snapshot,
+      lastPointerEvent:
+        type === "click" ? snapshot.lastPointerEvent : eventSummary,
+      lastClick:
+        type === "click"
+          ? `${eventSummary} at=${new Date().toISOString()}`
+          : snapshot.lastClick,
+      mode: windowState,
+      rendererViewport: `${window.innerWidth}x${window.innerHeight} @${window.devicePixelRatio}`,
+    }));
+    window.dashboard?.reportInputDebugEvent(inputEvent);
   }
 
   function reportPointer(interactive: boolean, dragging: boolean): void {
@@ -146,6 +209,12 @@ export default function App() {
   function handlePointerDown(event: React.PointerEvent<HTMLElement>): void {
     reportInputDebugEvent(event.nativeEvent, "pointerdown");
     if (!isInteractiveTarget(event.target)) return;
+    const eventTarget = event.target instanceof Element ? event.target : null;
+    if (!shouldCapturePointer(eventTarget)) {
+      pointerCaptureRef.current = null;
+      reportPointer(true, true);
+      return;
+    }
     const target =
       event.target instanceof HTMLElement
         ? event.target.closest<HTMLElement>("[data-overlay-interactive]")
@@ -190,6 +259,11 @@ export default function App() {
         data-overlay-interactive
         aria-labelledby="app-title"
       >
+        {bridgeError && (
+          <aside className="bridge-error" role="alert">
+            {bridgeError}
+          </aside>
+        )}
         <p className="eyebrow">M1 | OVERLAY SHELL</p>
         <h1 id="app-title">Dashboard Overlay</h1>
         <p className="description">
@@ -225,11 +299,19 @@ export default function App() {
         </div>
         {debugSnapshot.enabled && (
           <aside className="input-debug" aria-label="Input diagnostics">
-            <strong>Input diagnostics (dev flag)</strong>
-            <span>Last event: {debugSnapshot.lastEvent}</span>
+            <strong>INPUT DIAGNOSTICS · {debugSnapshot.startupBanner}</strong>
+            <span>Pointer: {debugSnapshot.lastPointerEvent}</span>
+            <span>Click: {debugSnapshot.lastClick}</span>
             <span>
-              Mode: {debugSnapshot.mode}; setIgnoreMouseEvents:{" "}
-              {debugSnapshot.lastSetIgnoreMouseEvents}
+              Mode: {debugSnapshot.mode}; transitions since launch:{" "}
+              {debugSnapshot.hasModeTransitionSinceLaunch} (
+              {debugSnapshot.modeTransitionCount}); entered edit:{" "}
+              {debugSnapshot.hasEnteredEditModeSinceLaunch}; last transition:{" "}
+              {debugSnapshot.lastModeTransitionAt} (
+              {debugSnapshot.millisecondsSinceLastModeTransition} ms ago)
+            </span>
+            <span>
+              setIgnoreMouseEvents: {debugSnapshot.lastSetIgnoreMouseEvents}
             </span>
             <span>
               Scale: {debugSnapshot.scaleFactor}; bounds:{" "}
@@ -241,6 +323,8 @@ export default function App() {
               {window.innerWidth}x{window.innerHeight} @
               {window.devicePixelRatio})
             </span>
+            <span>Initial setup: {debugSnapshot.initialWindowSetup}</span>
+            <span>Diagnostics log: {debugSnapshot.logFile}</span>
           </aside>
         )}
       </section>

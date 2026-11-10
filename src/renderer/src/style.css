@@ -81,6 +81,17 @@ h1 {
   font-size: 0.8rem;
 }
 
+.bridge-error {
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  border: 1px solid rgb(255 120 120 / 70%);
+  border-radius: 8px;
+  color: #fff;
+  background: rgb(110 20 24 / 96%);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
 .panel-footer {
   display: flex;
   flex-wrap: wrap;
@@ -117,15 +128,24 @@ h1 {
 }
 
 .input-debug {
+  position: fixed;
+  z-index: 999999;
+  top: 8px;
+  left: 8px;
   display: grid;
+  max-width: calc(100vw - 16px);
+  max-height: 200px;
   gap: 4px;
-  margin-top: 20px;
-  padding-top: 12px;
-  border-top: 1px solid rgb(158 184 255 / 22%);
-  color: #b6bdcc;
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid rgb(158 184 255 / 40%);
+  border-radius: 6px;
+  color: #fff;
+  background: rgb(0 0 0 / 92%);
   font-family: Consolas, monospace;
-  font-size: 0.7rem;
+  font-size: 0.65rem;
   overflow-wrap: anywhere;
+  pointer-events: none;
 }
 
 @media (max-width: 600px) {

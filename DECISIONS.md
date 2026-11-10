@@ -75,3 +75,26 @@ Append-only. Newest entries go at the bottom. Never reuse or renumber an ID.
   - Raising the overlay above fullscreen apps: rejected because it could obstruct presentations or video.
 - Impact / follow-ups:
   - If the manual observation shows that the overlay obstructs fullscreen content, revisit the policy before treating M1 as accepted.
+
+## 2026-11-10-04 Bundle the sandboxed preload as CommonJS
+
+- Context: Electron 42 attempted to load the generated sandboxed `index.mjs` as a preload script and failed with `Cannot use import statement outside a module`, leaving `window.dashboard` unavailable.
+- Decision: Emit the preload as a fully bundled CommonJS `index.cjs` and load that file from the main process.
+- Alternatives considered and rejected:
+  - Keep the ESM preload: rejected because the recorded Electron run failed before the bridge could be exposed.
+  - Disable Electron sandboxing: rejected because it weakens the required process boundary and is unnecessary.
+- Impact / follow-ups:
+  - `electron.vite.config.ts` sets `preload.build.externalizeDeps` to `false`, the output format to `cjs`, and the entry filename to `[name].cjs`; `src/main/index.ts` loads `../preload/index.cjs`.
+  - `pnpm build` runs `scripts/check-preload-output.mjs` to verify the generated CommonJS file and exposed dashboard API keys.
+  - This is a diagnostics/bridge reliability fix. It does not change the main-process mouse interaction policy.
+
+## 2026-11-10-05 Edit mode captures the overlay window
+
+- Context: The transparent overlay spans the primary monitor work area, while display mode must allow clicks through transparent space and edit mode must remain fully interactive.
+- Decision: In edit mode, the entire overlay window receives input, including transparent areas within its bounds. Exit edit mode with Escape, the global hotkey, or the tray menu. In display mode, input remains click-through except over the visible interactive panel.
+- Alternatives considered and rejected:
+  - Passing clicks through transparent areas while editing: rejected for now because it conflicts with the current "fully interactive" edit-mode requirement and makes editing behavior inconsistent across the window.
+- Impact / follow-ups:
+  - A click being consumed in the transparent part of the overlay during edit mode is expected behavior, not a click-through defect.
+  - Keyboard-focus behavior has not been manually assessed with the current placeholder UI; do not infer it from clicks or Escape handling.
+  - Revisit only if the product requirement changes.

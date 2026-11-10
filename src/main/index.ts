@@ -12,6 +12,7 @@ import {
   type WebContents,
   type WebFrameMain,
 } from "electron";
+import { appendFileSync, mkdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -28,6 +29,8 @@ import {
   type WindowAction,
   type WindowState,
 } from "../shared/window-state";
+
+declare const __BUILD_TIMESTAMP__: string;
 
 const currentDirectory = dirname(fileURLToPath(import.meta.url));
 const rendererFile = resolve(currentDirectory, "../renderer/index.html");
@@ -59,8 +62,15 @@ let rendererNeedsReload = false;
 let rendererReloadPending = false;
 let isQuitting = false;
 let lastInputDebugEvent = "none";
+let lastClick = "none";
 let lastSetIgnoreMouseEvents = "not called";
 let rendererViewport = "not reported";
+const appStartedAt = new Date();
+let inputDebugLogFile = "";
+let modeTransitionCount = 0;
+let hasEnteredEditModeSinceLaunch = false;
+let lastModeTransitionAt = appStartedAt;
+let initialWindowSetup = "not initialized";
 
 if (!singleInstanceLock) {
   app.quit();
@@ -72,6 +82,7 @@ if (!singleInstanceLock) {
   void app
     .whenReady()
     .then(() => {
+      initializeInputDiagnostics();
       registerIpcHandlers();
       createWindow();
       createTray();
@@ -109,7 +120,7 @@ function createWindow(): void {
     skipTaskbar: true,
     show: false,
     webPreferences: {
-      preload: join(currentDirectory, "../preload/index.mjs"),
+      preload: join(currentDirectory, "../preload/index.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
@@ -142,6 +153,34 @@ function createWindow(): void {
     applyWindowAction("renderer-gone");
   });
 
+  mainWindow.webContents.on("preload-error", (_event, preloadPath, error) => {
+    const details = {
+      preloadPath,
+      name: error.name,
+      message: error.message,
+    };
+    console.error(
+      "Dashboard preload failed; renderer bridge is unavailable:",
+      details,
+    );
+    if (inputDebugEnabled) {
+      logInputDebug("preload failed", {
+        ...details,
+      });
+    }
+  });
+
+  if (inputDebugEnabled) {
+    mainWindow.webContents.on("console-message", (event) => {
+      logInputDebug("renderer console", {
+        level: event.level,
+        message: event.message,
+        lineNumber: event.lineNumber,
+        sourceId: event.sourceId,
+      });
+    });
+  }
+
   mainWindow.webContents.on("before-input-event", (event, input) => {
     if (
       input.type === "keyDown" &&
@@ -162,6 +201,12 @@ function createWindow(): void {
 
 function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.getWindowState, (event: IpcMainInvokeEvent) => {
+    if (inputDebugEnabled) {
+      logInputDebug("window-state IPC request", {
+        trusted: isTrustedRenderer(event.sender, event.senderFrame),
+        senderFrameUrl: event.senderFrame?.url ?? "no frame",
+      });
+    }
     if (!isTrustedRenderer(event.sender, event.senderFrame)) {
       throw new Error("Rejected IPC request from an untrusted renderer");
     }
@@ -171,12 +216,22 @@ function registerIpcHandlers(): void {
   ipcMain.handle(
     IPC_CHANNELS.getInputDebugState,
     (event: IpcMainInvokeEvent): InputDebugSnapshot => {
+      if (inputDebugEnabled) {
+        logInputDebug("diagnostics bootstrap request", {
+          trusted: isTrustedRenderer(event.sender, event.senderFrame),
+          senderFrameUrl: event.senderFrame?.url ?? "no frame",
+        });
+      }
       if (!isTrustedRenderer(event.sender, event.senderFrame)) {
         throw new Error(
           "Rejected input-debug request from an untrusted renderer",
         );
       }
-      return getInputDebugSnapshot();
+      const snapshot = getInputDebugSnapshot();
+      if (inputDebugEnabled) {
+        logInputDebug("renderer requested diagnostics bootstrap", snapshot);
+      }
+      return snapshot;
     },
   );
 
@@ -257,9 +312,18 @@ function isTrustedRenderer(
 function applyWindowAction(action: WindowAction): void {
   const nextState = transitionWindowState(windowState, action);
   if (nextState !== windowState) {
+    const previousState = windowState;
     windowState = nextState;
+    modeTransitionCount += 1;
+    lastModeTransitionAt = new Date();
+    if (windowState === "edit") hasEnteredEditModeSinceLaunch = true;
     if (windowState !== "display") resetPointerState();
     mainWindow?.webContents.send(IPC_CHANNELS.windowStateChanged, windowState);
+    if (inputDebugEnabled) {
+      logInputDebug(
+        `mode transition ${previousState} -> ${windowState}; count=${modeTransitionCount}; enteredEdit=${hasEnteredEditModeSinceLaunch}`,
+      );
+    }
   }
 
   if (inputDebugEnabled) {
@@ -296,6 +360,14 @@ function presentWindow(): void {
 
   mainWindow.setFocusable(false);
   mainWindow.showInactive();
+  if (!initialWindowSetup.includes("showInactive()")) {
+    initialWindowSetup +=
+      "; initial display presentation: focusable=false; showInactive()";
+    if (inputDebugEnabled) {
+      logInputDebug("initial display presentation", initialWindowSetup);
+      sendInputDebugSnapshot();
+    }
+  }
 }
 
 function recoverRenderer(): void {
@@ -338,11 +410,12 @@ function applyMousePolicy(): void {
 
 function applyNativeMouseIgnore(ignore: boolean, reason: string): void {
   if (!mainWindow || mainWindow.isDestroyed()) return;
-  mainWindow.setIgnoreMouseEvents(
-    ignore,
-    ignore ? { forward: true } : undefined,
-  );
-  lastSetIgnoreMouseEvents = `${ignore} (${reason})`;
+  const options = ignore ? { forward: true } : undefined;
+  mainWindow.setIgnoreMouseEvents(ignore, options);
+  lastSetIgnoreMouseEvents = `ignore=${ignore}, options=${JSON.stringify(options ?? null)}, reason=${reason}`;
+  if (initialWindowSetup === "not initialized") {
+    initialWindowSetup = `constructor focusable=false; initial setIgnoreMouseEvents(${lastSetIgnoreMouseEvents})`;
+  }
   if (inputDebugEnabled) {
     logInputDebug(`setIgnoreMouseEvents(${ignore}) reason=${reason}`);
     sendInputDebugSnapshot();
@@ -351,10 +424,16 @@ function applyNativeMouseIgnore(ignore: boolean, reason: string): void {
 
 function getInputDebugSnapshot(): InputDebugSnapshot {
   const primaryDisplay = screen.getPrimaryDisplay();
+  const now = new Date();
+  const millisecondsSinceLastModeTransition =
+    now.getTime() - lastModeTransitionAt.getTime();
   return {
     enabled: inputDebugEnabled,
     mode: windowState,
-    lastEvent: lastInputDebugEvent,
+    startupBanner: `pid=${process.pid} build=${__BUILD_TIMESTAMP__} started=${appStartedAt.toISOString()} flag=${inputDebugEnabled} Electron=${process.versions.electron} app=${app.getVersion()}`,
+    logFile: inputDebugLogFile || "not initialized",
+    lastPointerEvent: lastInputDebugEvent,
+    lastClick,
     lastSetIgnoreMouseEvents,
     scaleFactor: primaryDisplay.scaleFactor,
     windowBounds: mainWindow
@@ -362,26 +441,76 @@ function getInputDebugSnapshot(): InputDebugSnapshot {
       : "no window",
     displayWorkArea: JSON.stringify(primaryDisplay.workArea),
     rendererViewport,
+    hasModeTransitionSinceLaunch: modeTransitionCount > 0,
+    hasEnteredEditModeSinceLaunch,
+    modeTransitionCount,
+    lastModeTransitionAt:
+      modeTransitionCount > 0 ? lastModeTransitionAt.toISOString() : "none",
+    millisecondsSinceLastModeTransition,
+    initialWindowSetup,
   };
 }
 
 function recordRendererEvent(inputEvent: InputDebugEvent): void {
-  lastInputDebugEvent = `${inputEvent.type} target=${inputEvent.target} client=(${inputEvent.clientX},${inputEvent.clientY}) mode=${inputEvent.mode}`;
+  const eventSummary = `${inputEvent.type} target=${inputEvent.target} client=(${inputEvent.clientX},${inputEvent.clientY}) screen=(${inputEvent.screenX},${inputEvent.screenY}) mode=${inputEvent.mode}`;
+  if (inputEvent.type === "click") {
+    lastClick = `${eventSummary} at=${new Date().toISOString()}`;
+  } else {
+    lastInputDebugEvent = eventSummary;
+  }
   rendererViewport = `${inputEvent.innerWidth}x${inputEvent.innerHeight} @${inputEvent.devicePixelRatio}`;
   logInputDebug("received renderer event", inputEvent);
   sendInputDebugSnapshot();
 }
 
 function logInputDebug(message: string, detail?: unknown): void {
-  console.info(`[main ${new Date().toISOString()}] ${message}`, detail ?? "");
+  const entry = {
+    timestamp: new Date().toISOString(),
+    processId: process.pid,
+    process: "main",
+    message,
+    detail: detail ?? null,
+  };
+  console.info("[input diagnostics]", entry);
+  if (!inputDebugLogFile) return;
+  try {
+    appendFileSync(inputDebugLogFile, `${JSON.stringify(entry)}\n`, "utf8");
+  } catch (error) {
+    console.error(
+      `Failed to append input diagnostics to ${inputDebugLogFile}:`,
+      error,
+    );
+  }
+}
+
+function initializeInputDiagnostics(): void {
+  if (!inputDebugEnabled) return;
+  inputDebugLogFile = join(app.getPath("userData"), "input-diagnostics.log");
+  try {
+    mkdirSync(dirname(inputDebugLogFile), { recursive: true });
+    const startupBanner = getInputDebugSnapshot().startupBanner;
+    const entry = {
+      timestamp: new Date().toISOString(),
+      processId: process.pid,
+      process: "main",
+      message: "startup",
+      detail: { startupBanner, logFile: inputDebugLogFile },
+    };
+    appendFileSync(inputDebugLogFile, `${JSON.stringify(entry)}\n`, "utf8");
+    console.info("[input diagnostics]", entry);
+  } catch (error) {
+    console.error(
+      `Failed to initialize input diagnostics log at ${inputDebugLogFile}:`,
+      error,
+    );
+  }
 }
 
 function sendInputDebugSnapshot(): void {
   if (!inputDebugEnabled || !mainWindow || mainWindow.isDestroyed()) return;
-  mainWindow.webContents.send(
-    IPC_CHANNELS.inputDebugChanged,
-    getInputDebugSnapshot(),
-  );
+  const snapshot = getInputDebugSnapshot();
+  logInputDebug("diagnostic snapshot", snapshot);
+  mainWindow.webContents.send(IPC_CHANNELS.inputDebugChanged, snapshot);
 }
 
 function getPrimaryBounds(): ReturnType<typeof getPrimaryWorkAreaBounds> {

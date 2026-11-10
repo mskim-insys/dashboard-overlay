@@ -29,12 +29,21 @@ export interface InputDebugEvent {
 export interface InputDebugSnapshot {
   enabled: boolean;
   mode: string;
-  lastEvent: string;
+  startupBanner: string;
+  logFile: string;
+  lastPointerEvent: string;
+  lastClick: string;
   lastSetIgnoreMouseEvents: string;
   scaleFactor: number;
   windowBounds: string;
   displayWorkArea: string;
   rendererViewport: string;
+  hasModeTransitionSinceLaunch: boolean;
+  hasEnteredEditModeSinceLaunch: boolean;
+  modeTransitionCount: number;
+  lastModeTransitionAt: string;
+  millisecondsSinceLastModeTransition: number;
+  initialWindowSetup: string;
 }
 
 export function isPointerInteraction(

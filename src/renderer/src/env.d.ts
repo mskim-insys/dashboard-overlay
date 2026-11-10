@@ -6,9 +6,12 @@ import type {
 import type { WindowState } from "../../shared/window-state";
 
 declare global {
+  const __INPUT_DEBUG_ENABLED__: boolean;
+
   interface Window {
     dashboard?: {
       readonly isDesktop: boolean;
+      readonly inputDebugEnabled: boolean;
       getWindowState(): Promise<WindowState>;
       getInputDebugState(): Promise<InputDebugSnapshot>;
       reportInputDebugEvent(inputEvent: InputDebugEvent): void;
