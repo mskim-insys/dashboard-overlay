@@ -6,20 +6,20 @@ Status: in progress
 ## Handover
 
 - Current milestone: M1 (acceptance criteria live in the spec)
-- Done and verified: M0 is complete. Node.js 22.23.4 and Electron 42.3.3 are pinned; `pnpm dev` opened the Dashboard Overlay window; build, test, lint, and format checks passed.
-- Not done / partial: M1 has not started.
-- First step next session: Implement the overlay shell against the M1 requirements in specs/dashboard.md.
+- Done and verified: M0 is complete. Node.js 22.23.4 and Electron 42.3.3 are pinned; hot reload visibly updated the running window without restarting it. See the latest session entry for the clean-clone result.
+- Not done / partial: M1 has not started. The clean-clone `pnpm dev` first run still needs the Electron runtime download workaround described in README.md. Packaging spike (`electron-builder`, unsigned installer on a second PC with SAC on) is planned after M1.
+- First step next session: Wait for the user's confirmation before implementing M1; then use specs/dashboard.md and run the manual acceptance checks with the user.
 - Read first: `specs/dashboard.md`, `README.md`, `AGENTS.md`
-- Traps: Keep Electron-only behavior behind the preload bridge; see DECISIONS.md 2026-11-09-03. Do not bypass application-control restrictions; see DECISIONS.md 2026-11-10-01.
-- Open questions: None.
+- Traps: Keep Electron-only behavior behind the preload bridge; see DECISIONS.md 2026-11-09-03. Do not bypass application-control restrictions or upgrade Node/Electron without approval; see DECISIONS.md 2026-11-10-01.
+- Open questions: Code signing and SAC on colleagues' PCs; decision needed before M6. Owner: user.
 
 ## Sessions
 
-### 2026-11-10 · M0 hot-reload verification
+### 2026-11-10 · Part B
 
-- Changed: Temporarily changed the renderer heading for a visible hot-reload check, then restored the original text.
-- Verified: With `pnpm dev` running, the window visibly updated to "Dashboard Overlay - hot reload test" without restarting; the Electron window process ID remained 25432. The original heading is restored, and M0 remains checked.
-- Risks / open: None for the hot-reload check.
+- Changed: Added pnpm Electron build approval and fresh-clone instructions; updated the Electron/SAC decision, M1 monitor requirements, runtime-upgrade boundary, and worklog handover.
+- Verified: The clean clone installed with pnpm 12.16.1, but the first `pnpm dev` failed with `Electron uninstall`; `pnpm exec electron --version` downloaded Electron 42.3.3 and the next `pnpm dev` opened the window. Thus the requested no-manual-step check failed. `engines.pnpm` (`>=10`) includes the pinned package manager version. Registry metadata shows the native extractor starting at 42.4.0; latest 42.x/43.x/44.x/45.x are 42.11.18/43.8.7/44.10.2/45.2.3. With the local `pnpm dev` running, the renderer visibly changed to "Dashboard Overlay - hot reload test" without restarting (Electron window PID 25432 stayed the same); the original text was restored and M0 remains checked. Targeted Prettier and `git diff --check` passed.
+- Risks / open: First-run Electron runtime download remains a clean-clone friction point; investigate before relying on zero-manual-step setup. Packaging spike is scheduled after M1.
 
 ### 2026-11-10 · M0
 
