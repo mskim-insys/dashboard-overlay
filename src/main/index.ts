@@ -14,7 +14,13 @@ import {
 } from "electron";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { IPC_CHANNELS, isPointerInteraction } from "../shared/ipc";
+import {
+  IPC_CHANNELS,
+  isInputDebugEvent,
+  isPointerInteraction,
+  type InputDebugEvent,
+  type InputDebugSnapshot,
+} from "../shared/ipc";
 import {
   getPrimaryWorkAreaBounds,
   shouldIgnoreMouseEvents,
@@ -40,6 +46,8 @@ if (rendererUrl) {
 }
 const hotkey = "CommandOrControl+Alt+Shift+D";
 const singleInstanceLock = app.requestSingleInstanceLock();
+const inputDebugEnabled =
+  !app.isPackaged && process.env["DASHBOARD_OVERLAY_DEBUG_INPUT"] === "1";
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
@@ -50,6 +58,9 @@ let hotkeyRegistered = false;
 let rendererNeedsReload = false;
 let rendererReloadPending = false;
 let isQuitting = false;
+let lastInputDebugEvent = "none";
+let lastSetIgnoreMouseEvents = "not called";
+let rendererViewport = "not reported";
 
 if (!singleInstanceLock) {
   app.quit();
@@ -106,7 +117,7 @@ function createWindow(): void {
   });
 
   mainWindow.setAlwaysOnTop(true, "floating");
-  mainWindow.setIgnoreMouseEvents(true, { forward: true });
+  applyNativeMouseIgnore(true, "window-created");
 
   mainWindow.on("close", (event) => {
     if (isQuitting) return;
@@ -157,21 +168,63 @@ function registerIpcHandlers(): void {
     return windowState;
   });
 
+  ipcMain.handle(
+    IPC_CHANNELS.getInputDebugState,
+    (event: IpcMainInvokeEvent): InputDebugSnapshot => {
+      if (!isTrustedRenderer(event.sender, event.senderFrame)) {
+        throw new Error(
+          "Rejected input-debug request from an untrusted renderer",
+        );
+      }
+      return getInputDebugSnapshot();
+    },
+  );
+
+  ipcMain.on(
+    IPC_CHANNELS.inputDebugEvent,
+    (event: IpcMainEvent, payload: unknown) => {
+      if (!inputDebugEnabled) return;
+      if (!isTrustedRenderer(event.sender, event.senderFrame)) {
+        logInputDebug("rejected renderer event from untrusted sender");
+        return;
+      }
+      if (!isInputDebugEvent(payload)) {
+        logInputDebug("rejected malformed renderer event");
+        return;
+      }
+      recordRendererEvent(payload);
+    },
+  );
+
   ipcMain.on(
     IPC_CHANNELS.pointerInteraction,
     (event: IpcMainEvent, payload: unknown) => {
       if (!isTrustedRenderer(event.sender, event.senderFrame)) {
+        if (inputDebugEnabled) {
+          logInputDebug("rejected pointer IPC from untrusted sender");
+        }
         console.warn("Rejected pointer IPC from an untrusted renderer");
         return;
       }
       if (!isPointerInteraction(payload)) {
+        if (inputDebugEnabled) {
+          logInputDebug("rejected malformed pointer IPC payload");
+        }
         console.warn("Rejected malformed pointer IPC payload");
         return;
       }
-      if (windowState !== "display") return;
+      if (windowState !== "display") {
+        if (inputDebugEnabled) {
+          logInputDebug(`rejected pointer IPC in ${windowState} mode`, payload);
+        }
+        return;
+      }
 
       pointerDragging = payload.dragging;
       pointerInteractive = payload.interactive || payload.dragging;
+      if (inputDebugEnabled) {
+        logInputDebug("received pointer IPC", payload);
+      }
       applyMousePolicy();
     },
   );
@@ -209,6 +262,10 @@ function applyWindowAction(action: WindowAction): void {
     mainWindow?.webContents.send(IPC_CHANNELS.windowStateChanged, windowState);
   }
 
+  if (inputDebugEnabled) {
+    logInputDebug(`window action ${action}; mode=${windowState}`);
+    sendInputDebugSnapshot();
+  }
   updateTray();
   applyMousePolicy();
 
@@ -231,7 +288,7 @@ function presentWindow(): void {
 
   if (windowState === "edit") {
     mainWindow.setFocusable(true);
-    mainWindow.setIgnoreMouseEvents(false);
+    applyNativeMouseIgnore(false, "edit-mode");
     mainWindow.show();
     mainWindow.focus();
     return;
@@ -276,9 +333,54 @@ function applyMousePolicy(): void {
     pointerInteractive,
     pointerDragging,
   );
+  applyNativeMouseIgnore(ignore, "pointer-policy");
+}
+
+function applyNativeMouseIgnore(ignore: boolean, reason: string): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
   mainWindow.setIgnoreMouseEvents(
     ignore,
     ignore ? { forward: true } : undefined,
+  );
+  lastSetIgnoreMouseEvents = `${ignore} (${reason})`;
+  if (inputDebugEnabled) {
+    logInputDebug(`setIgnoreMouseEvents(${ignore}) reason=${reason}`);
+    sendInputDebugSnapshot();
+  }
+}
+
+function getInputDebugSnapshot(): InputDebugSnapshot {
+  const primaryDisplay = screen.getPrimaryDisplay();
+  return {
+    enabled: inputDebugEnabled,
+    mode: windowState,
+    lastEvent: lastInputDebugEvent,
+    lastSetIgnoreMouseEvents,
+    scaleFactor: primaryDisplay.scaleFactor,
+    windowBounds: mainWindow
+      ? JSON.stringify(mainWindow.getBounds())
+      : "no window",
+    displayWorkArea: JSON.stringify(primaryDisplay.workArea),
+    rendererViewport,
+  };
+}
+
+function recordRendererEvent(inputEvent: InputDebugEvent): void {
+  lastInputDebugEvent = `${inputEvent.type} target=${inputEvent.target} client=(${inputEvent.clientX},${inputEvent.clientY}) mode=${inputEvent.mode}`;
+  rendererViewport = `${inputEvent.innerWidth}x${inputEvent.innerHeight} @${inputEvent.devicePixelRatio}`;
+  logInputDebug("received renderer event", inputEvent);
+  sendInputDebugSnapshot();
+}
+
+function logInputDebug(message: string, detail?: unknown): void {
+  console.info(`[main ${new Date().toISOString()}] ${message}`, detail ?? "");
+}
+
+function sendInputDebugSnapshot(): void {
+  if (!inputDebugEnabled || !mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.webContents.send(
+    IPC_CHANNELS.inputDebugChanged,
+    getInputDebugSnapshot(),
   );
 }
 

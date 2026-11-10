@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import type { PointerInteraction } from "../../shared/ipc";
+import type {
+  InputDebugEvent,
+  InputDebugSnapshot,
+  PointerInteraction,
+} from "../../shared/ipc";
 import type { WindowState } from "../../shared/window-state";
 import { isDesktop } from "./platform";
 
@@ -14,6 +18,16 @@ export default function App() {
   const [windowState, setWindowState] = useState<WindowState>("display");
   const [clickCount, setClickCount] = useState(0);
   const [webglStatus, setWebglStatus] = useState("Initializing WebGL…");
+  const [debugSnapshot, setDebugSnapshot] = useState<InputDebugSnapshot>({
+    enabled: false,
+    mode: "unknown",
+    lastEvent: "none",
+    lastSetIgnoreMouseEvents: "not called",
+    scaleFactor: 0,
+    windowBounds: "unknown",
+    displayWorkArea: "unknown",
+    rendererViewport: "not reported",
+  });
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const pointerCaptureRef = useRef<HTMLElement | null>(null);
   const interactionRef = useRef<PointerInteraction>({
@@ -46,6 +60,7 @@ export default function App() {
 
     let active = true;
     const unsubscribe = bridge.onWindowStateChange(setWindowState);
+    const unsubscribeDebug = bridge.onInputDebugChange(setDebugSnapshot);
     void bridge
       .getWindowState()
       .then((state) => {
@@ -54,13 +69,53 @@ export default function App() {
       .catch((error: unknown) => {
         console.error("Failed to get overlay state:", error);
       });
+    void bridge
+      .getInputDebugState()
+      .then((snapshot) => {
+        if (active) setDebugSnapshot(snapshot);
+      })
+      .catch((error: unknown) => {
+        console.error("Failed to get input debug state:", error);
+      });
 
     return () => {
       active = false;
       unsubscribe();
+      unsubscribeDebug();
       bridge.setPointerInteraction({ interactive: false, dragging: false });
     };
   }, []);
+
+  function reportInputDebugEvent(
+    event: MouseEvent | PointerEvent,
+    type: string,
+  ): void {
+    if (!debugSnapshot.enabled || !window.dashboard) return;
+    const describe = (target: EventTarget | null): string => {
+      if (!(target instanceof Element)) return "none";
+      const id = target.id ? `#${target.id}` : "";
+      const className =
+        typeof target.className === "string" && target.className
+          ? `.${target.className.trim().replace(/\s+/g, ".")}`
+          : "";
+      return `${target.tagName.toLowerCase()}${id}${className}`;
+    };
+    const inputEvent: InputDebugEvent = {
+      type,
+      mode: windowState,
+      target: describe(event.target),
+      relatedTarget:
+        "relatedTarget" in event ? describe(event.relatedTarget) : "none",
+      clientX: "clientX" in event ? event.clientX : null,
+      clientY: "clientY" in event ? event.clientY : null,
+      screenX: "screenX" in event ? event.screenX : null,
+      screenY: "screenY" in event ? event.screenY : null,
+      innerWidth: window.innerWidth,
+      innerHeight: window.innerHeight,
+      devicePixelRatio: window.devicePixelRatio,
+    };
+    window.dashboard.reportInputDebugEvent(inputEvent);
+  }
 
   function reportPointer(interactive: boolean, dragging: boolean): void {
     if (!isDesktop || !window.dashboard || windowState !== "display") return;
@@ -77,16 +132,19 @@ export default function App() {
   }
 
   function handlePointerOver(event: React.PointerEvent<HTMLElement>): void {
+    reportInputDebugEvent(event.nativeEvent, "pointerover");
     if (isInteractiveTarget(event.target)) reportPointer(true, false);
   }
 
   function handlePointerOut(event: React.PointerEvent<HTMLElement>): void {
+    reportInputDebugEvent(event.nativeEvent, "pointerout");
     if (!isInteractiveTarget(event.target)) return;
     if (isInteractiveTarget(event.relatedTarget)) return;
     reportPointer(false, interactionRef.current.dragging);
   }
 
   function handlePointerDown(event: React.PointerEvent<HTMLElement>): void {
+    reportInputDebugEvent(event.nativeEvent, "pointerdown");
     if (!isInteractiveTarget(event.target)) return;
     const target =
       event.target instanceof HTMLElement
@@ -98,6 +156,7 @@ export default function App() {
   }
 
   function handlePointerUp(event: React.PointerEvent<HTMLElement>): void {
+    reportInputDebugEvent(event.nativeEvent, "pointerup");
     const captureTarget = pointerCaptureRef.current;
     if (captureTarget?.hasPointerCapture(event.pointerId)) {
       captureTarget.releasePointerCapture(event.pointerId);
@@ -108,6 +167,7 @@ export default function App() {
   }
 
   function handlePointerCancel(event: React.PointerEvent<HTMLElement>): void {
+    reportInputDebugEvent(event.nativeEvent, "pointercancel");
     const captureTarget = pointerCaptureRef.current;
     if (captureTarget?.hasPointerCapture(event.pointerId)) {
       captureTarget.releasePointerCapture(event.pointerId);
@@ -150,7 +210,10 @@ export default function App() {
           <button
             className="test-button"
             type="button"
-            onClick={() => setClickCount((count) => count + 1)}
+            onClick={(event) => {
+              reportInputDebugEvent(event.nativeEvent, "click");
+              setClickCount((count) => count + 1);
+            }}
           >
             Click test ({clickCount})
           </button>
@@ -160,6 +223,26 @@ export default function App() {
               : "Display mode"}
           </span>
         </div>
+        {debugSnapshot.enabled && (
+          <aside className="input-debug" aria-label="Input diagnostics">
+            <strong>Input diagnostics (dev flag)</strong>
+            <span>Last event: {debugSnapshot.lastEvent}</span>
+            <span>
+              Mode: {debugSnapshot.mode}; setIgnoreMouseEvents:{" "}
+              {debugSnapshot.lastSetIgnoreMouseEvents}
+            </span>
+            <span>
+              Scale: {debugSnapshot.scaleFactor}; bounds:{" "}
+              {debugSnapshot.windowBounds}; work area:{" "}
+              {debugSnapshot.displayWorkArea}
+            </span>
+            <span>
+              Renderer: {debugSnapshot.rendererViewport} (current{" "}
+              {window.innerWidth}x{window.innerHeight} @
+              {window.devicePixelRatio})
+            </span>
+          </aside>
+        )}
       </section>
     </main>
   );
