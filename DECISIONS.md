@@ -40,14 +40,17 @@ Append-only. Newest entries go at the bottom. Never reuse or renumber an ID.
   - Downgrading Electron to avoid its native extraction helper: rejected because it would trade away current runtime fixes to work around an endpoint policy.
 - Impact / follow-ups:
   - `pnpm dev` could not start here because Windows blocked `index.win32-x64-msvc.node`; if this reproduces in the user's terminal, ask IT for an approved Electron development environment.
+- Superseded by 2026-11-10-01.
 
 ## 2026-11-10-01 Pin Electron 42 for the M0 development environment
 
-- Context: Electron installation hit a Windows application-control issue involving the `extract-zip` package. Disabling application control was recommended but would be a last resort because the app is intended for internal distribution.
-- Decision: Use the installed Node.js 22.23.4 runtime and pin Electron to exactly 42.3.3 for this project; align the Node.js type definitions with Node 22.
+- Context: On 2026-11-09 at 08:40 UTC, Code Integrity event 3077 under policy `VerifiedAndReputableDesktop` blocked `node.exe` from loading `node_modules/@electron-internal/extract-zip/index.win32-x64-msvc.node`. Its SHA256 was `47315D2B8EDD374AAC3DC6379C170DFDC1D3831F50A0BFAEDA3693D910F90380`. `VerifiedAndReputablePolicyState` was `1` (enforcing).
+- Decision: Use Node.js 22.23.4 and pin Electron to exactly 42.3.3, with Node 22 type definitions. Electron 42.3.3 depends on the JavaScript `extract-zip` 2.0.1 package and does not load the blocked native file. A stale copy of that `.node` file can remain in `node_modules`, but the pinned Electron runtime does not load it.
 - Alternatives considered and rejected:
   - Disabling Windows application control: deferred as a last resort because it would be inappropriate for the intended internal deployment environment.
-  - Continuing with Node.js 24 and Electron 45: not selected after the installation issue prevented completing M0.
+  - Electron 45.2.3, the version in the lockfile before the pin, uses the native extractor. Registry metadata shows the native `@electron-internal/extract-zip` dependency starting at Electron 42.4.0; latest 42.x (42.11.18), 43.x (43.8.7), 44.x (44.10.2), and 45.x (45.2.3) use it. Electron 42.3.3 is not the latest 42.x patch.
 - Impact / follow-ups:
-  - Keep Node.js at 22.23.4 and Electron at 42.3.3 until the installation and development workflow is confirmed in the target environment.
-  - This supersedes the M0 runtime follow-up in DECISIONS.md 2026-11-09-04; it does not authorize bypassing Windows application-control policy.
+  - After the pin, the 2026-11-10 install/build/dev checks produced no Code Integrity 3033/3076/3077 events, and `electron.exe` loaded normally. A clean clone's first `pnpm dev` did fail with `Electron uninstall` because Electron 42.3.3 did not fetch its runtime during `pnpm install`; `pnpm exec electron --version` downloaded it, after which `pnpm dev` opened the window. No application-control bypass is authorized.
+  - This is a developer-install issue. The installer is expected not to contain the extractor; this has not been verified by building an installer, since `electron-builder` is not installed.
+  - Do not upgrade to an Electron version using the native extractor until the extractor loads under SAC (check the event log after an upgrade), is signed or allowed by reputation, or another install route is used (for example, a pre-downloaded zip with `ELECTRON_OVERRIDE_DIST_PATH`).
+  - The pinned Electron version will eventually stop receiving security backports.
