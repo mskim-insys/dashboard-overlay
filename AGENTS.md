@@ -25,6 +25,7 @@ The main worker AI for this workspace is GPT-6-Luna, abbreviated as Luna.
 - Do not edit: lockfiles by hand, `node_modules/`, build output (`dist/`, `out/`, `release/`), signing certificates or secrets
 - Ask first:
   - adding a dependency outside the agreed stack
+  - upgrading Node or Electron (see DECISIONS.md 2026-11-10-01)
   - changing Electron security settings (`contextIsolation`, `nodeIntegration`, preload API surface)
   - code that opens URLs or launches local paths (needs an allowlist)
   - adding non-Windows code paths
