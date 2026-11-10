@@ -64,6 +64,12 @@ if ($events) {
 - Verified: `pnpm build`, `pnpm test` (9 tests), `pnpm lint`, and targeted Prettier passed. On 2026-11-10 at 10:13:38.794 +09:00, launched the final source on Electron 42.3.3 and confirmed the visible panel reported "WebGL canvas active"; Code Integrity events 3033/3076/3077 after that timestamp: 0. The overlay appeared over a focused browser without taking focus. GPU/hardware acceleration settings were not changed.
 - Risks / open: User must run the manual regression list below. Fullscreen behavior and mouse/focus interactions have not been manually verified.
 
+### 2026-11-10 · M1 user regression results
+
+- Changed: Recorded the user's manual observations; no implementation changes were made in this entry.
+- Verified: The user reported display-mode click-through OK; hotkey and tray appear to work; Esc exits edit mode; scaling appears to apply; the overlay remains visible during fullscreen and clicks pass through. At 100% scaling, edit mode stopped click-through; at 125%, clicks still passed through in edit mode. The user also reported all clicks passing through during the panel-edge/drag check, so placeholder-panel interaction and drag capture are not confirmed. No visible block notification appeared. Code Integrity Operational events 3033/3076/3077 from the manual run start at 2026-11-10 10:25:38.939 +09:00: 0, including no `vk_swiftshader.dll` event.
+- Risks / open: M1 remains pending. Repeat the explicit **Click test** button check and verify edit-mode input at 125%; resize/move is not implemented for the static placeholder panel.
+
 ### 2026-11-10 · M0
 
 - Changed: Pinned Electron to 42.3.3, aligned the project engine and Node type definitions with Node.js 22.23.4, and updated the runtime decision and setup docs.
