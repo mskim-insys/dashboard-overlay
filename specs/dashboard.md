@@ -45,7 +45,7 @@ Delivery
 - Windows only.
 - Electron desktop shell, see DECISIONS.md 2026-11-09-01. Overlay, not wallpaper replacement, see DECISIONS.md 2026-11-09-02.
 - The dashboard UI is a plain web app. Electron-only behavior sits behind a thin platform adapter so a web build could later turn it into no-ops.
-- Security: `contextIsolation` on, `nodeIntegration` off, minimal preload API. URL opening and app launching only for allowlisted targets. Imported layouts are untrusted input.
+- Security: `contextIsolation` on, `nodeIntegration` off, minimal preload API. App windows load only bundled local files or the loopback development server, never remote content; links open in the default browser. Keep the renderer-loading policy centralized in the main process so a future policy change is localized. URL opening and app launching only for allowlisted targets. Imported layouts are untrusted input.
 - Selected in M0: Vite, React, TypeScript, and electron-vite. Remaining planned libraries: react-grid-layout, three.js (react-three-fiber), and electron-builder; confirm when their milestones begin.
 - Out of scope for now: GitHub Pages/PWA/Android build, MCP server, widget types other than `link`, monitor selection, macOS/Linux.
 
