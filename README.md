@@ -25,7 +25,7 @@ pnpm install
 pnpm dev
 ```
 
-The workspace allows Electron's install script so pnpm can set up its runtime in a fresh clone without an interactive approval.
+The workspace allows Electron's install script. With the pinned Electron 42.3.3, a clean `pnpm install` did not fetch the runtime in the fresh-clone check. If the first `pnpm dev` reports `Electron uninstall`, run `pnpm exec electron --version` once to download the runtime, then run `pnpm dev` again.
 
 ## Current behavior and limits
 
