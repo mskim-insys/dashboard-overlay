@@ -1,19 +1,102 @@
-import { app, BrowserWindow } from "electron";
-import { dirname, join } from "node:path";
+import {
+  app,
+  BrowserWindow,
+  globalShortcut,
+  ipcMain,
+  Menu,
+  nativeImage,
+  screen,
+  Tray,
+  type IpcMainEvent,
+  type IpcMainInvokeEvent,
+  type WebContents,
+  type WebFrameMain,
+} from "electron";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { IPC_CHANNELS, isPointerInteraction } from "../shared/ipc";
+import {
+  getPrimaryWorkAreaBounds,
+  shouldIgnoreMouseEvents,
+  transitionWindowState,
+  type WindowAction,
+  type WindowState,
+} from "../shared/window-state";
 
 const currentDirectory = dirname(fileURLToPath(import.meta.url));
+const rendererFile = resolve(currentDirectory, "../renderer/index.html");
+const rendererUrl = process.env["ELECTRON_RENDERER_URL"];
+if (rendererUrl) {
+  const parsedRendererUrl = new URL(rendererUrl);
+  const isLoopback =
+    parsedRendererUrl.hostname === "localhost" ||
+    parsedRendererUrl.hostname === "127.0.0.1" ||
+    parsedRendererUrl.hostname === "[::1]";
+  if (parsedRendererUrl.protocol !== "http:" || !isLoopback) {
+    throw new Error(
+      "The development renderer URL must use the local Vite server",
+    );
+  }
+}
+const hotkey = "CommandOrControl+Alt+Shift+D";
+const singleInstanceLock = app.requestSingleInstanceLock();
+
 let mainWindow: BrowserWindow | null = null;
+let tray: Tray | null = null;
+let windowState: WindowState = "hidden";
+let pointerInteractive = false;
+let pointerDragging = false;
+let hotkeyRegistered = false;
+let rendererNeedsReload = false;
+let rendererReloadPending = false;
+let isQuitting = false;
+
+if (!singleInstanceLock) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    applyWindowAction("show");
+  });
+
+  void app
+    .whenReady()
+    .then(() => {
+      registerIpcHandlers();
+      createWindow();
+      createTray();
+      registerHotkey();
+      registerDisplayListeners();
+      applyWindowAction("show");
+    })
+    .catch((error: unknown) => {
+      console.error("Failed to start Dashboard Overlay:", error);
+      app.exit(1);
+    });
+}
+
+app.on("before-quit", () => {
+  isQuitting = true;
+  globalShortcut.unregisterAll();
+  tray?.destroy();
+  tray = null;
+});
+
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") app.quit();
+});
 
 function createWindow(): void {
+  const primaryDisplay = screen.getPrimaryDisplay();
   mainWindow = new BrowserWindow({
-    width: 1100,
-    height: 720,
-    minWidth: 720,
-    minHeight: 480,
+    ...getPrimaryWorkAreaBounds(screen.getAllDisplays(), primaryDisplay.id),
     title: "Dashboard Overlay",
-    autoHideMenuBar: true,
-    backgroundColor: "#11141b",
+    frame: false,
+    transparent: true,
+    backgroundColor: "#00000000",
+    hasShadow: false,
+    focusable: false,
+    skipTaskbar: true,
+    show: false,
     webPreferences: {
       preload: join(currentDirectory, "../preload/index.mjs"),
       contextIsolation: true,
@@ -22,29 +105,261 @@ function createWindow(): void {
     },
   });
 
+  mainWindow.setAlwaysOnTop(true, "floating");
+  mainWindow.setIgnoreMouseEvents(true, { forward: true });
+
+  mainWindow.on("close", (event) => {
+    if (isQuitting) return;
+    event.preventDefault();
+    applyWindowAction("hide");
+  });
+
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
 
-  const rendererUrl = process.env["ELECTRON_RENDERER_URL"];
-  const loadPromise = rendererUrl
-    ? mainWindow.loadURL(rendererUrl)
-    : mainWindow.loadFile(join(currentDirectory, "../renderer/index.html"));
+  mainWindow.on("unresponsive", () => {
+    resetPointerState();
+    applyWindowAction("renderer-unresponsive");
+  });
 
-  void loadPromise.catch((error: unknown) => {
+  mainWindow.webContents.on("render-process-gone", (_event, details) => {
+    console.error("Dashboard renderer process exited:", details.reason);
+    rendererNeedsReload = true;
+    rendererReloadPending = false;
+    resetPointerState();
+    applyWindowAction("renderer-gone");
+  });
+
+  mainWindow.webContents.on("before-input-event", (event, input) => {
+    if (
+      input.type === "keyDown" &&
+      input.key === "Escape" &&
+      windowState === "edit"
+    ) {
+      event.preventDefault();
+      applyWindowAction("escape");
+    }
+  });
+
+  void loadRenderer(mainWindow).catch((error: unknown) => {
     console.error("Failed to load the dashboard renderer:", error);
-    app.quit();
+    rendererNeedsReload = true;
+    applyWindowAction("renderer-gone");
   });
 }
 
-void app
-  .whenReady()
-  .then(createWindow)
-  .catch((error: unknown) => {
-    console.error("Failed to start Dashboard Overlay:", error);
-    app.exit(1);
+function registerIpcHandlers(): void {
+  ipcMain.handle(IPC_CHANNELS.getWindowState, (event: IpcMainInvokeEvent) => {
+    if (!isTrustedRenderer(event.sender, event.senderFrame)) {
+      throw new Error("Rejected IPC request from an untrusted renderer");
+    }
+    return windowState;
   });
 
-app.on("window-all-closed", () => {
-  app.quit();
-});
+  ipcMain.on(
+    IPC_CHANNELS.pointerInteraction,
+    (event: IpcMainEvent, payload: unknown) => {
+      if (!isTrustedRenderer(event.sender, event.senderFrame)) {
+        console.warn("Rejected pointer IPC from an untrusted renderer");
+        return;
+      }
+      if (!isPointerInteraction(payload)) {
+        console.warn("Rejected malformed pointer IPC payload");
+        return;
+      }
+      if (windowState !== "display") return;
+
+      pointerDragging = payload.dragging;
+      pointerInteractive = payload.interactive || payload.dragging;
+      applyMousePolicy();
+    },
+  );
+}
+
+function isTrustedRenderer(
+  sender: WebContents,
+  frame: WebFrameMain | null,
+): boolean {
+  if (!mainWindow || sender !== mainWindow.webContents) return false;
+  if (!frame || frame !== sender.mainFrame) return false;
+
+  try {
+    const frameUrl = new URL(frame.url);
+    if (rendererUrl) {
+      const expectedUrl = new URL(rendererUrl);
+      const isLoopback =
+        expectedUrl.hostname === "localhost" ||
+        expectedUrl.hostname === "127.0.0.1" ||
+        expectedUrl.hostname === "[::1]";
+      return isLoopback && frameUrl.origin === expectedUrl.origin;
+    }
+
+    return fileURLToPath(frameUrl).toLowerCase() === rendererFile.toLowerCase();
+  } catch {
+    return false;
+  }
+}
+
+function applyWindowAction(action: WindowAction): void {
+  const nextState = transitionWindowState(windowState, action);
+  if (nextState !== windowState) {
+    windowState = nextState;
+    if (windowState !== "display") resetPointerState();
+    mainWindow?.webContents.send(IPC_CHANNELS.windowStateChanged, windowState);
+  }
+
+  updateTray();
+  applyMousePolicy();
+
+  if (!mainWindow || windowState === "hidden") {
+    mainWindow?.hide();
+    return;
+  }
+
+  if (rendererNeedsReload) {
+    recoverRenderer();
+    return;
+  }
+
+  presentWindow();
+}
+
+function presentWindow(): void {
+  if (!mainWindow || windowState === "hidden") return;
+  mainWindow.setBounds(getPrimaryBounds());
+
+  if (windowState === "edit") {
+    mainWindow.setFocusable(true);
+    mainWindow.setIgnoreMouseEvents(false);
+    mainWindow.show();
+    mainWindow.focus();
+    return;
+  }
+
+  mainWindow.setFocusable(false);
+  mainWindow.showInactive();
+}
+
+function recoverRenderer(): void {
+  if (!mainWindow || rendererReloadPending) return;
+  rendererReloadPending = true;
+  mainWindow.hide();
+
+  void loadRenderer(mainWindow)
+    .then(() => {
+      rendererNeedsReload = false;
+      rendererReloadPending = false;
+      presentWindow();
+    })
+    .catch((error: unknown) => {
+      rendererReloadPending = false;
+      console.error("Failed to recover the dashboard renderer:", error);
+    });
+}
+
+function loadRenderer(window: BrowserWindow): Promise<void> {
+  return rendererUrl
+    ? window.loadURL(rendererUrl)
+    : window.loadFile(rendererFile);
+}
+
+function resetPointerState(): void {
+  pointerInteractive = false;
+  pointerDragging = false;
+}
+
+function applyMousePolicy(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  const ignore = shouldIgnoreMouseEvents(
+    windowState,
+    pointerInteractive,
+    pointerDragging,
+  );
+  mainWindow.setIgnoreMouseEvents(
+    ignore,
+    ignore ? { forward: true } : undefined,
+  );
+}
+
+function getPrimaryBounds(): ReturnType<typeof getPrimaryWorkAreaBounds> {
+  const primaryDisplay = screen.getPrimaryDisplay();
+  return getPrimaryWorkAreaBounds(screen.getAllDisplays(), primaryDisplay.id);
+}
+
+function registerDisplayListeners(): void {
+  screen.on("display-metrics-changed", () => applyPrimaryBounds());
+  screen.on("display-added", () => applyPrimaryBounds());
+  screen.on("display-removed", () => applyPrimaryBounds());
+}
+
+function applyPrimaryBounds(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.setBounds(getPrimaryBounds());
+}
+
+function createTray(): void {
+  const svg = encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><rect x="2" y="2" width="28" height="28" rx="8" fill="#597ce8"/><path d="M10 8h6a8 8 0 0 1 0 16h-6zm5 12a4 4 0 0 0 0-8h-1v8z" fill="#fff"/></svg>',
+  );
+  const icon = nativeImage.createFromDataURL(
+    `data:image/svg+xml;charset=utf-8,${svg}`,
+  );
+  tray = new Tray(icon);
+  tray.setToolTip("Dashboard Overlay");
+  tray.on("click", () => applyWindowAction("show"));
+  updateTray();
+}
+
+function updateTray(): void {
+  if (!tray || tray.isDestroyed()) return;
+  const menu = Menu.buildFromTemplate([
+    ...(hotkeyRegistered
+      ? []
+      : [
+          {
+            label: `Hotkey unavailable (${hotkey}); use this menu`,
+            enabled: false,
+          },
+        ]),
+    {
+      label: "Show",
+      click: () => applyWindowAction("show"),
+    },
+    {
+      label: "Hide",
+      click: () => applyWindowAction("hide"),
+    },
+    {
+      label: "Edit mode",
+      type: "checkbox",
+      checked: windowState === "edit",
+      click: () => applyWindowAction("toggle-edit"),
+    },
+    { type: "separator" },
+    {
+      label: "Quit",
+      click: () => app.quit(),
+    },
+  ]);
+  tray.setContextMenu(menu);
+  tray.setToolTip(
+    hotkeyRegistered
+      ? `Dashboard Overlay (${hotkey})`
+      : `Dashboard Overlay — hotkey unavailable`,
+  );
+}
+
+function registerHotkey(): void {
+  hotkeyRegistered = globalShortcut.register(hotkey, () => {
+    applyWindowAction("hotkey");
+  });
+
+  if (!hotkeyRegistered) {
+    tray?.displayBalloon({
+      title: "Dashboard Overlay",
+      content: `The hotkey ${hotkey} is unavailable. Use the tray menu instead.`,
+    });
+    updateTray();
+  }
+}
