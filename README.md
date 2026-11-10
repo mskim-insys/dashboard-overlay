@@ -4,7 +4,7 @@ A Windows desktop overlay that shows a personal/work dashboard of widgets on top
 
 ## Usage
 
-Run `pnpm install`, then `pnpm dev` to open the starter dashboard in an Electron window. The current window is a development shell; overlay behavior and widgets are future milestones.
+Run `pnpm install`, then `pnpm dev` to open the dashboard overlay.
 
 ## Build and run
 
@@ -29,7 +29,9 @@ The workspace allows Electron's install script. With the pinned Electron 42.3.3,
 
 ## Current behavior and limits
 
-- Status: M0 development scaffold with a basic Electron window and React welcome screen.
+- Status: M1 overlay shell with display/edit modes, a tray menu, a global hotkey, a transparent click-through surface, and an interactive placeholder panel with a WebGL runtime check. Widgets and layout editing are not implemented yet.
 - Platform: Windows only.
 - Stack: Electron, electron-vite, Vite, React, TypeScript, ESLint, Prettier, and Vitest.
-- Electron exposes only a small desktop-presence flag through preload. Overlay behavior, widgets, persistence, packaging, and auto-update are not implemented yet.
+- The default hotkey is `Ctrl+Alt+Shift+D` on Windows. The tray menu also provides Show, Hide, Edit mode, and Quit.
+- The Electron window loads only the local bundled renderer or the loopback Vite development server; it does not load remote content.
+- Widgets, layout persistence, packaging, and auto-update are not implemented yet.

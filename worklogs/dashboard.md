@@ -6,9 +6,9 @@ Status: in progress
 ## Handover
 
 - Current milestone: M1 (acceptance criteria live in the spec)
-- Done and verified: M0 is complete. Node.js 22.23.4 and Electron 42.3.3 are pinned; hot reload visibly updated the running window without restarting it. The Electron 42.11.18 override spike opened a window but SAC blocked `vk_swiftshader.dll`; do not upgrade on this route.
-- Not done / partial: M1 has not started. The clean-clone `pnpm dev` first run still needs the Electron runtime download workaround described in README.md. Packaging spike (`electron-builder`, unsigned installer on a second PC with SAC on) is planned after M1.
-- First step next session: After the user confirms the M1 plan, implement the overlay shell and use the manual regression list below.
+- Done and verified: M0 is complete. M1 shell code is implemented and automated checks pass; the WebGL canvas rendered under Electron 42.3.3 with zero matching Code Integrity events in the recorded run. User-only M1 input, DPI, display, and fullscreen checks are pending below.
+- Not done / partial: M1 manual acceptance is not complete. The clean-clone `pnpm dev` first run still needs the Electron runtime download workaround described in README.md. Packaging spike (`electron-builder`, unsigned installer on a second PC with SAC on) is planned after M1.
+- First step next session: Collect the user's M1 manual regression results before marking the M1 criterion complete.
 - Read first: `specs/dashboard.md`, `README.md`, `AGENTS.md`
 - Traps: Keep Electron-only behavior behind the preload bridge; see DECISIONS.md 2026-11-09-03. Do not bypass application-control restrictions or upgrade Node/Electron without approval; see DECISIONS.md 2026-11-10-01.
 - Open questions: Code signing and SAC on colleagues' PCs; decision needed before M6. Owner: user.
@@ -29,14 +29,40 @@ Status: in progress
 
 ## M1 manual regression checklist
 
-- [ ] Display mode: clicks on transparent areas reach the app underneath; clicking a widget still interacts with that widget.
-- [ ] Edit mode: the overlay receives pointer input across its surface and widgets can be interacted with.
-- [ ] Hotkey toggles the overlay reliably.
-- [ ] Tray Show/Hide, Edit mode, and Quit actions work.
-- [ ] Single monitor at 100% scaling: placement, click-through, and widget hit areas work.
-- [ ] Single monitor at 125% scaling: placement, click-through, and widget hit areas work.
-- [ ] With mixed-scaling dual monitors, if available: the overlay stays on the primary monitor and the secondary monitor remains usable.
-- [ ] With a visible WebGL canvas, inspect Code Integrity events 3033, 3076, and 3077 after running the app; check specifically for `vk_swiftshader.dll` and any other blocked runtime file. Record the event result; any block means this regression check fails.
+- [ ] Display mode: click a blank transparent area over another app and verify its control receives the click; click **Click test** and verify its count increments.
+- [ ] Edge/drag: move across the placeholder panel edge repeatedly, then press in the panel, drag outside it, and release; verify there is no click-through flicker or lost drag input.
+- [ ] Edit mode: select **Edit mode** in the tray, verify panel interaction and keyboard focus, then press Esc and verify the overlay returns to non-focusable display mode.
+- [ ] Hotkey: press `Ctrl+Alt+Shift+D` to hide, press again to show, then enter edit mode and press it once to exit edit mode. Confirm display mode does not steal focus while typing in another app.
+- [ ] Tray: verify Show, Hide, Edit mode, and Quit. If the hotkey cannot register, confirm a visible tray notice identifies the unavailable shortcut.
+- [ ] Single monitor at 100% scaling: verify primary-work-area placement, click-through, placeholder input, focus, and hotkey/tray behavior.
+- [ ] Single monitor at 125% scaling: repeat the same checks and verify the panel remains aligned and usable.
+- [ ] Mixed-scaling dual monitors, if available: verify the overlay stays on the primary monitor and the secondary monitor remains usable.
+- [ ] Fullscreen observation: start a PowerPoint slideshow or fullscreen video; note whether the overlay is hidden, visible above it, or otherwise affects input/content. Verify the fullscreen app remains usable and record the result.
+- [ ] WebGL/SAC: use the PowerShell steps below. Wait until the panel says **WebGL canvas active**; record the event count and details, including any `vk_swiftshader.dll` entry. Any blocked runtime file fails this check.
+
+```powershell
+$start = Get-Date
+$start.ToString("o")
+pnpm dev
+# After the WebGL canvas is active and the manual checks are complete, stop with Ctrl+C.
+$events = Get-WinEvent -FilterHashtable @{
+  LogName = "Microsoft-Windows-CodeIntegrity/Operational"
+  Id = 3033, 3076, 3077
+  StartTime = $start
+} -ErrorAction SilentlyContinue
+if ($events) {
+  $events | Format-List TimeCreated, Id, Message
+  "Event count: $($events.Count)"
+} else {
+  "Event count: 0"
+}
+```
+
+### 2026-11-10 · M1 implementation
+
+- Changed: Added a transparent, primary-work-area overlay with display/edit state, tray controls, a global hotkey, click-through pointer reporting, crash/unresponsive failsafes, a placeholder interactive panel, and a WebGL runtime-check canvas.
+- Verified: `pnpm build`, `pnpm test` (9 tests), `pnpm lint`, and targeted Prettier passed. On 2026-11-10 at 10:09:52.827 +09:00, launched Electron 42.3.3 and confirmed the visible panel reported "WebGL canvas active"; Code Integrity events 3033/3076/3077 after that timestamp: 0. GPU/hardware acceleration settings were not changed.
+- Risks / open: User must run the manual regression list below. Fullscreen behavior and mouse/focus interactions have not been manually verified.
 
 ### 2026-11-10 · M0
 

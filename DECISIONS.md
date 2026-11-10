@@ -55,3 +55,23 @@ Append-only. Newest entries go at the bottom. Never reuse or renumber an ID.
   - A 2026-11-10 spike used the official Electron 42.11.18 zip with `ELECTRON_OVERRIDE_DIST_PATH` (and `ELECTRON_EXEC_PATH` for electron-vite). The app window opened, but SAC blocked `runtime\vk_swiftshader.dll`, producing Code Integrity events 3077 and 3033. The native extractor was not loaded. This route is not SAC-compatible; defer the upgrade.
   - Before the M6 rollout this pin must be resolved: either an Electron with a SAC-compatible runtime, or a signed build.
   - Electron app windows must load only local app content: bundled files in a packaged app or the loopback Vite dev server during development. Never load remote content in an app window; open links in the default browser. Keep the renderer-loading policy centralized in the main process so a future, explicitly approved policy change can be made in one place rather than scattered through the app.
+
+## 2026-11-10-02 Use the floating always-on-top level
+
+- Context: The M1 overlay must remain above ordinary work windows without using an unnecessarily high system z-order.
+- Decision: Set Electron always-on-top at the `floating` level.
+- Alternatives considered and rejected:
+  - The `screen-saver` level: rejected because the overlay is not a screensaver and should not claim a higher z-order than needed.
+  - The default `normal` level: rejected because ordinary windows could cover the overlay.
+- Impact / follow-ups:
+  - Verify behavior with a fullscreen presentation or video during the M1 manual check. Do not change the GPU or hardware-acceleration policy to address z-order behavior.
+
+## 2026-11-10-03 Do not add fullscreen-app detection in M1
+
+- Context: The overlay should stay useful during ordinary desktop work, while fullscreen applications need to remain usable.
+- Decision: Keep the `floating` always-on-top policy and do not add app-specific fullscreen detection or automatic hiding in M1. Let Windows determine fullscreen z-order; observe PowerPoint slideshow or fullscreen video behavior and record it in the worklog.
+- Alternatives considered and rejected:
+  - Hiding automatically for fullscreen apps: deferred because the current app has no reliable cross-process fullscreen detection mechanism.
+  - Raising the overlay above fullscreen apps: rejected because it could obstruct presentations or video.
+- Impact / follow-ups:
+  - If the manual observation shows that the overlay obstructs fullscreen content, revisit the policy before treating M1 as accepted.
