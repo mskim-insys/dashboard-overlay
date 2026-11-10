@@ -15,6 +15,12 @@ Status: in progress
 
 ## Sessions
 
+### 2026-11-10 · M0 hot-reload verification
+
+- Changed: Temporarily changed the renderer heading for a visible hot-reload check, then restored the original text.
+- Verified: With `pnpm dev` running, the window visibly updated to "Dashboard Overlay - hot reload test" without restarting; the Electron window process ID remained 25432. The original heading is restored, and M0 remains checked.
+- Risks / open: None for the hot-reload check.
+
 ### 2026-11-10 · M0
 
 - Changed: Pinned Electron to 42.3.3, aligned the project engine and Node type definitions with Node.js 22.23.4, and updated the runtime decision and setup docs.
