@@ -61,7 +61,7 @@ if ($events) {
 ### 2026-11-10 · M1 implementation
 
 - Changed: Added a transparent, primary-work-area overlay with display/edit state, tray controls, a global hotkey, click-through pointer reporting, crash/unresponsive failsafes, a placeholder interactive panel, and a WebGL runtime-check canvas.
-- Verified: `pnpm build`, `pnpm test` (9 tests), `pnpm lint`, and targeted Prettier passed. On 2026-11-10 at 10:09:52.827 +09:00, launched Electron 42.3.3 and confirmed the visible panel reported "WebGL canvas active"; Code Integrity events 3033/3076/3077 after that timestamp: 0. GPU/hardware acceleration settings were not changed.
+- Verified: `pnpm build`, `pnpm test` (9 tests), `pnpm lint`, and targeted Prettier passed. On 2026-11-10 at 10:13:38.794 +09:00, launched the final source on Electron 42.3.3 and confirmed the visible panel reported "WebGL canvas active"; Code Integrity events 3033/3076/3077 after that timestamp: 0. The overlay appeared over a focused browser without taking focus. GPU/hardware acceleration settings were not changed.
 - Risks / open: User must run the manual regression list below. Fullscreen behavior and mouse/focus interactions have not been manually verified.
 
 ### 2026-11-10 · M0
