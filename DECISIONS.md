@@ -123,3 +123,24 @@ Append-only. Newest entries go at the bottom. Never reuse or renumber an ID.
   - No install/build scripts or native modules may be added.
   - Placeholder tiles are interactive display-mode regions; empty grid space and gaps remain click-through. Drag handles are edit-only and bypass pointer capture so grid dragging and control clicks remain separate.
   - Stage A layouts are in-memory only. Do not add persistence before M3.
+
+## 2026-11-11-02 Accept display-scaling gap change as an M2 known issue
+
+- Context: After Stage A was accepted, changing display scaling from 125% to 100% while the app was running made gaps between tiles visibly wider. Rearranging a tile restored the even snapped gaps.
+- Decision: Accept this as a known issue and do not fix it in M2. Hypothesis only: the viewport size changes when scaling changes, so the board stretches before it is re-snapped by a layout interaction. The cause has not been verified.
+- Alternatives considered and rejected:
+  - Changing layout behavior on a scaling change: deferred because the observed sequence does not establish the cause and the user accepts the issue for now.
+- Impact / follow-ups:
+  - Keep the observation and hypothesis in the M2 handover; do not treat the hypothesis as established behavior.
+  - Revisit only in a later milestone if the user requests it or testing identifies a separate requirement.
+
+## 2026-11-11-03 Cap the fluid board at eight rows
+
+- Context: The Stage B board keeps 72 CSS-pixel rows, 16-pixel row gaps, and frame padding of 36 pixels above and 40 pixels below the board, plus a 62-pixel toolbar and 20-pixel frame gap. Eight rows occupy 688 pixels including row gaps; ten occupy 864 pixels before frame space. The built Electron window reports 125% DPI. Its primary monitor is 1920x1080 physical pixels with a 1920x1020 taskbar-excluded work area, or 816 CSS pixels high. This leaves 658 CSS pixels for the board after frame padding, toolbar, and gap; an eight-row layout needs 688 pixels and scrolls, while ten rows cannot fit. A separate DPI-unaware system probe reported virtualized 1536x864 dimensions and was not used. A 1366x768 physical display at 125% is estimated to leave about 408 CSS pixels for the board.
+- Decision: Limit layouts to eight grid rows, use a scrollable board when its content exceeds the available height, and reject/revert drag or resize layouts outside the 12-column/eight-row bounds or with overlaps. Disable Add with a visible no-space reason when no 3-by-2 location fits. Keep the 12-column board fluid-width and use `react-grid-layout` 2.3.0's default push-and-vertical-compact collision behavior.
+- Alternatives considered and rejected:
+  - Allowing ten rows: rejected because the 864-pixel grid alone exceeds the available work-area height at 125% and on 1366x768 displays.
+  - Relying only on the grid library's `maxRows`: rejected because the application must also reject invalid intermediate and completed layouts.
+- Impact / follow-ups:
+  - M3 persistence must handle destination bounds for saved logical grid coordinates. Hypothesis: because the board is fluid-width, coordinates portable across PCs do not guarantee identical physical tile widths or fit within a destination's available height. Validate and reflow/compact within destination bounds or reject with an explicit incompatibility path.
+  - The 1366x768 work-area value is an estimate; validate it on a machine/display of that size if available.

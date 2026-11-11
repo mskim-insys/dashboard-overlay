@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type Ref } from "react";
 import ReactGridLayout, {
   useContainerWidth,
   verticalCompactor,
   type Layout,
+  type ResizeHandleAxis,
 } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
 import type {
@@ -13,17 +14,30 @@ import type {
 import type { WindowState } from "../../shared/window-state";
 import { isDesktop } from "./platform";
 import {
-  beginBoardDrag,
-  cancelBoardDrag,
+  addBoardTile,
+  beginBoardInteraction,
+  BOARD_COLUMNS,
+  BOARD_MAX_ROWS,
+  cancelBoardInteraction,
   createBoardLayoutState,
-  finishBoardDrag,
+  findTilePosition,
+  finishBoardInteraction,
   initialBoardLayout,
   isBoardDraggable,
-  updateBoardDrag,
+  isBoardResizable,
+  removeBoardTile,
+  updateBoardInteraction,
 } from "./board-layout";
 import { shouldCapturePointer } from "./pointer-capture";
 
-const tiles = [
+interface DashboardTile {
+  id: string;
+  title: string;
+  description: string;
+  label: string;
+}
+
+const initialTiles: DashboardTile[] = [
   {
     id: "overview",
     title: "Overview",
@@ -60,12 +74,27 @@ const tiles = [
     description: "A wider tile for future dashboard content.",
     label: "PLACEHOLDER",
   },
-] as const;
+];
 
 function isInteractiveTarget(target: EventTarget | null): boolean {
   return (
     target instanceof Element &&
     target.closest("[data-overlay-interactive]") !== null
+  );
+}
+
+function renderResizeHandle(
+  axis: ResizeHandleAxis,
+  ref: Ref<HTMLElement>,
+): React.JSX.Element {
+  return (
+    <span
+      ref={ref}
+      className={`react-resizable-handle react-resizable-handle-${axis}`}
+      data-overlay-interactive
+      data-no-capture
+      aria-hidden="true"
+    />
   );
 }
 
@@ -75,6 +104,8 @@ export default function App() {
   const [boardLayout, setBoardLayout] = useState(() =>
     createBoardLayoutState(initialBoardLayout),
   );
+  const [tiles, setTiles] = useState<DashboardTile[]>(initialTiles);
+  const [boardActionError, setBoardActionError] = useState<string | null>(null);
   const [webglStatus, setWebglStatus] = useState("Initializing WebGL…");
   const [bridgeError, setBridgeError] = useState<string | null>(null);
   const [debugSnapshot, setDebugSnapshot] = useState<InputDebugSnapshot>({
@@ -98,6 +129,7 @@ export default function App() {
   });
   const { width, containerRef, mounted } = useContainerWidth();
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const nextTileIdRef = useRef(1);
   const windowStateRef = useRef(windowState);
   const pointerCaptureRef = useRef<{
     element: HTMLElement;
@@ -107,6 +139,7 @@ export default function App() {
     interactive: false,
     dragging: false,
   });
+  const availableTilePosition = findTilePosition(boardLayout.layout);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -136,7 +169,7 @@ export default function App() {
       }
       pointerCaptureRef.current = null;
       interactionRef.current = { interactive: false, dragging: false };
-      setBoardLayout(cancelBoardDrag);
+      setBoardLayout(cancelBoardInteraction);
       setGridRevision((revision) => revision + 1);
     }
     setWindowState(nextState);
@@ -324,7 +357,38 @@ export default function App() {
     reportPointer(false, false);
   }
 
-  function renderTile(tile: (typeof tiles)[number]) {
+  function handleAddTile(): void {
+    const tileNumber = nextTileIdRef.current;
+    const id = `placeholder-${tileNumber}`;
+    const nextLayout = addBoardTile(boardLayout, id);
+    if (!nextLayout) {
+      setBoardActionError(
+        `No room for another tile within the ${BOARD_MAX_ROWS}-row board limit.`,
+      );
+      return;
+    }
+
+    nextTileIdRef.current += 1;
+    setBoardLayout(nextLayout);
+    setTiles((current) => [
+      ...current,
+      {
+        id,
+        title: `Placeholder ${tileNumber}`,
+        description: "A new placeholder tile for your dashboard.",
+        label: "PLACEHOLDER",
+      },
+    ]);
+    setBoardActionError(null);
+  }
+
+  function handleRemoveTile(tile: DashboardTile): void {
+    setBoardLayout((current) => removeBoardTile(current, tile.id));
+    setTiles((current) => current.filter((item) => item.id !== tile.id));
+    setBoardActionError(null);
+  }
+
+  function renderTile(tile: DashboardTile) {
     return (
       <article
         key={tile.id}
@@ -340,6 +404,17 @@ export default function App() {
           <span className="tile-grip" aria-hidden="true">
             ⠿
           </span>
+          {windowState === "edit" && (
+            <button
+              type="button"
+              className="tile-remove-button"
+              data-no-capture
+              aria-label={`Remove ${tile.title}`}
+              onClick={() => handleRemoveTile(tile)}
+            >
+              Remove
+            </button>
+          )}
         </header>
         <h2 id={`${tile.id}-title`}>{tile.title}</h2>
         <p>{tile.description}</p>
@@ -376,47 +451,97 @@ export default function App() {
             <p className="eyebrow">DASHBOARD OVERLAY</p>
             <h1>Workspace</h1>
           </div>
-          <p className="mode-cue" role="status">
-            {windowState === "edit"
-              ? "EDITING · Drag tile headers · Esc to exit"
-              : "DISPLAY · Layout locked"}
-          </p>
+          <div className="dashboard-toolbar-actions">
+            <p className="mode-cue" role="status">
+              {windowState === "edit"
+                ? "EDITING · Drag headers · Resize corners · Esc to exit"
+                : "DISPLAY · Layout locked"}
+            </p>
+            {windowState === "edit" && (
+              <div className="board-add-controls">
+                <button
+                  type="button"
+                  className="board-add-button"
+                  data-no-capture
+                  disabled={!availableTilePosition}
+                  aria-describedby="board-add-status"
+                  onClick={handleAddTile}
+                >
+                  Add tile
+                </button>
+                <p
+                  id="board-add-status"
+                  className="board-add-status"
+                  role="status"
+                >
+                  {boardActionError ??
+                    (!availableTilePosition
+                      ? `No space within the ${BOARD_MAX_ROWS}-row board limit.`
+                      : "")}
+                </p>
+              </div>
+            )}
+          </div>
         </header>
         <section
           ref={containerRef}
           className="dashboard-board"
           aria-label="Dashboard tiles"
         >
-          {mounted && width > 0 && (
-            <ReactGridLayout
-              key={gridRevision}
-              width={width}
-              layout={boardLayout.layout}
-              gridConfig={{
-                cols: 12,
-                rowHeight: 72,
-                margin: [16, 16],
-                containerPadding: [0, 0],
-                maxRows: 10,
-              }}
-              dragConfig={{
-                enabled: isBoardDraggable(windowState),
-                bounded: true,
-                handle: ".tile-drag-handle",
-              }}
-              resizeConfig={{ enabled: false }}
-              compactor={verticalCompactor}
-              className="dashboard-grid"
-              onDragStart={() => setBoardLayout(beginBoardDrag)}
-              onLayoutChange={(layout: Layout) =>
-                setBoardLayout((current) => updateBoardDrag(current, layout))
-              }
-              onDragStop={(layout: Layout) =>
-                setBoardLayout((current) => finishBoardDrag(current, layout))
-              }
-            >
-              {tiles.map(renderTile)}
-            </ReactGridLayout>
+          {tiles.length === 0 ? (
+            <p className="empty-board" role="status">
+              {windowState === "edit"
+                ? "No tiles yet. Use Add tile to get started."
+                : "No tiles on the board. Enter edit mode to add a placeholder."}
+            </p>
+          ) : (
+            mounted &&
+            width > 0 && (
+              <ReactGridLayout
+                key={gridRevision}
+                width={width}
+                layout={boardLayout.layout}
+                gridConfig={{
+                  cols: BOARD_COLUMNS,
+                  rowHeight: 72,
+                  margin: [16, 16],
+                  containerPadding: [0, 0],
+                  maxRows: BOARD_MAX_ROWS,
+                }}
+                dragConfig={{
+                  enabled: isBoardDraggable(windowState),
+                  bounded: true,
+                  handle: ".tile-drag-handle",
+                  cancel: "button, .react-resizable-handle",
+                }}
+                resizeConfig={{
+                  enabled: isBoardResizable(windowState),
+                  handles: isBoardResizable(windowState) ? ["se"] : [],
+                  handleComponent: renderResizeHandle,
+                }}
+                compactor={verticalCompactor}
+                className="dashboard-grid"
+                onDragStart={() => setBoardLayout(beginBoardInteraction)}
+                onResizeStart={() => setBoardLayout(beginBoardInteraction)}
+                onLayoutChange={(layout: Layout) =>
+                  setBoardLayout((current) =>
+                    updateBoardInteraction(current, layout),
+                  )
+                }
+                onDragStop={(layout: Layout) =>
+                  setBoardLayout((current) =>
+                    finishBoardInteraction(current, layout),
+                  )
+                }
+                onResizeStop={(layout: Layout) =>
+                  setBoardLayout((current) =>
+                    finishBoardInteraction(current, layout),
+                  )
+                }
+              >
+                {tiles.map(renderTile)}
+              </ReactGridLayout>
+            )
           )}
         </section>
       </div>

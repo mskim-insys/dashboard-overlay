@@ -29,10 +29,11 @@ The workspace allows Electron's install script. With the pinned Electron 42.3.3,
 
 ## Current behavior and limits
 
-- Status: M2 Stage A provides six placeholder tiles on a draggable grid. Tiles can be rearranged in edit mode; display mode locks the layout and keeps gaps between tiles click-through. The tray and global hotkey switch modes, and Escape exits edit mode. Layout persistence, resize, add, and remove are not implemented yet.
+- Status: M2 provides six placeholder tiles on a fluid-width, 12-column grid. In edit mode, tiles can be dragged and resized, and placeholder tiles can be added or removed; the board has a 2-by-2 tile minimum and an eight-row limit. Add is disabled with a reason when no 3-by-2 slot fits, and the empty-board state still offers Add. Full boards scroll within the available work area. Display mode locks the layout and hides resize/remove/add controls; gaps between tiles remain click-through. The tray and global hotkey switch modes, and Escape exits edit mode. Layout persistence and the widget configuration dialog are not implemented yet.
 - Platform: Windows only.
 - Stack: Electron, electron-vite, Vite, React, TypeScript, ESLint, Prettier, and Vitest.
 - The default hotkey is `Ctrl+Alt+Shift+D` on Windows. The tray menu also provides Show, Hide, Edit mode, and Quit.
 - The grid uses `react-grid-layout` 2.3.0. The WebGL smoke check remains in a placeholder tile.
+- Changing display scaling from 125% to 100% while the app is running can make tile gaps look wider until a tile is rearranged; this is an accepted M2 known issue, with an unverified viewport-resizing hypothesis in [DECISIONS.md](./DECISIONS.md#2026-11-11-02-accept-display-scaling-gap-change-as-an-m2-known-issue).
 - The Electron window loads only the local bundled renderer or the loopback Vite development server; it does not load remote content.
 - Widgets, layout persistence, packaging, and auto-update are not implemented yet.

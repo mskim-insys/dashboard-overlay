@@ -3,7 +3,7 @@ interface PointerCaptureTarget {
 }
 
 const noCaptureSelector =
-  "button, input, select, textarea, a, [data-no-capture]";
+  "button, input, select, textarea, a, [data-no-capture], .react-resizable-handle";
 
 export function shouldCapturePointer(
   target: PointerCaptureTarget | null,
