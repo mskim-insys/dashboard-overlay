@@ -29,9 +29,10 @@ The workspace allows Electron's install script. With the pinned Electron 42.3.3,
 
 ## Current behavior and limits
 
-- Status: M1 overlay shell with display/edit modes, a tray menu, a global hotkey, a transparent click-through surface, and an interactive placeholder panel with a WebGL runtime check. Widgets and layout editing are not implemented yet.
+- Status: M2 Stage A provides six placeholder tiles on a draggable grid. Tiles can be rearranged in edit mode; display mode locks the layout and keeps gaps between tiles click-through. The tray and global hotkey switch modes, and Escape exits edit mode. Layout persistence, resize, add, and remove are not implemented yet.
 - Platform: Windows only.
 - Stack: Electron, electron-vite, Vite, React, TypeScript, ESLint, Prettier, and Vitest.
 - The default hotkey is `Ctrl+Alt+Shift+D` on Windows. The tray menu also provides Show, Hide, Edit mode, and Quit.
+- The grid uses `react-grid-layout` 2.3.0. The WebGL smoke check remains in a placeholder tile.
 - The Electron window loads only the local bundled renderer or the loopback Vite development server; it does not load remote content.
 - Widgets, layout persistence, packaging, and auto-update are not implemented yet.

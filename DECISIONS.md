@@ -111,3 +111,15 @@ Append-only. Newest entries go at the bottom. Never reuse or renumber an ID.
   - Before M6, investigate whether panel clicks in display mode can avoid changing fullscreen focus.
   - Re-test with PowerPoint on a PC where it is installed.
   - Revisit the rare panel click-through case if it recurs.
+
+## 2026-11-11-01 Use react-grid-layout 2.3.0 for M2
+
+- Context: M2 needs movable placeholder tiles now, with resize and snapping in the next stage. The project already planned `react-grid-layout`, but had not yet verified it against React 19 or the SAC-constrained dependency rules.
+- Decision: Pin `react-grid-layout` to exactly 2.3.0. Use its v2 API and default vertical compactor/collision behavior: moving a tile pushes others as needed and the layout compacts vertically. Enable dragging only in edit mode; leave resizing disabled in Stage A.
+- Alternatives considered and rejected:
+  - Hand-rolled drag/grid behavior: not selected because the approved library provides the collision and compaction model needed for Stage B. Revisit this fallback if the installed library fails React 19 runtime or SAC checks.
+- Impact / follow-ups:
+  - Installed the exact package with React 19.3.1 and executed the built Electron app; the six tiles and WebGL status rendered. The production dependency tree contains no native packages.
+  - No install/build scripts or native modules may be added.
+  - Placeholder tiles are interactive display-mode regions; empty grid space and gaps remain click-through. Drag handles are edit-only and bypass pointer capture so grid dragging and control clicks remain separate.
+  - Stage A layouts are in-memory only. Do not add persistence before M3.

@@ -1,4 +1,10 @@
 import { useEffect, useRef, useState } from "react";
+import ReactGridLayout, {
+  useContainerWidth,
+  verticalCompactor,
+  type Layout,
+} from "react-grid-layout";
+import "react-grid-layout/css/styles.css";
 import type {
   InputDebugEvent,
   InputDebugSnapshot,
@@ -6,7 +12,55 @@ import type {
 } from "../../shared/ipc";
 import type { WindowState } from "../../shared/window-state";
 import { isDesktop } from "./platform";
+import {
+  beginBoardDrag,
+  cancelBoardDrag,
+  createBoardLayoutState,
+  finishBoardDrag,
+  initialBoardLayout,
+  isBoardDraggable,
+  updateBoardDrag,
+} from "./board-layout";
 import { shouldCapturePointer } from "./pointer-capture";
+
+const tiles = [
+  {
+    id: "overview",
+    title: "Overview",
+    description: "A placeholder for your most-used dashboard items.",
+    label: "WORKSPACE",
+  },
+  {
+    id: "team-links",
+    title: "Team links",
+    description: "Shared links will appear here in a later milestone.",
+    label: "PLACEHOLDER",
+  },
+  {
+    id: "scratchpad",
+    title: "Scratchpad",
+    description: "A taller tile reserved for notes and quick reminders.",
+    label: "PLACEHOLDER",
+  },
+  {
+    id: "webgl-check",
+    title: "WebGL check",
+    description: "M1 rendering regression check.",
+    label: "RUNTIME",
+  },
+  {
+    id: "weekly-focus",
+    title: "Weekly focus",
+    description: "A placeholder for the items you want to keep in view.",
+    label: "PLACEHOLDER",
+  },
+  {
+    id: "activity",
+    title: "Activity",
+    description: "A wider tile for future dashboard content.",
+    label: "PLACEHOLDER",
+  },
+] as const;
 
 function isInteractiveTarget(target: EventTarget | null): boolean {
   return (
@@ -17,7 +71,10 @@ function isInteractiveTarget(target: EventTarget | null): boolean {
 
 export default function App() {
   const [windowState, setWindowState] = useState<WindowState>("display");
-  const [clickCount, setClickCount] = useState(0);
+  const [gridRevision, setGridRevision] = useState(0);
+  const [boardLayout, setBoardLayout] = useState(() =>
+    createBoardLayoutState(initialBoardLayout),
+  );
   const [webglStatus, setWebglStatus] = useState("Initializing WebGL…");
   const [bridgeError, setBridgeError] = useState<string | null>(null);
   const [debugSnapshot, setDebugSnapshot] = useState<InputDebugSnapshot>({
@@ -39,8 +96,13 @@ export default function App() {
     millisecondsSinceLastModeTransition: 0,
     initialWindowSetup: "not initialized",
   });
+  const { width, containerRef, mounted } = useContainerWidth();
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const pointerCaptureRef = useRef<HTMLElement | null>(null);
+  const windowStateRef = useRef(windowState);
+  const pointerCaptureRef = useRef<{
+    element: HTMLElement;
+    pointerId: number;
+  } | null>(null);
   const interactionRef = useRef<PointerInteraction>({
     interactive: false,
     dragging: false,
@@ -63,7 +125,22 @@ export default function App() {
     context.clearColor(0.13, 0.2, 0.37, 1);
     context.clear(context.COLOR_BUFFER_BIT);
     setWebglStatus("WebGL canvas active");
-  }, []);
+  }, [mounted, width]);
+
+  function applyRendererWindowState(nextState: WindowState): void {
+    if (windowStateRef.current !== nextState) {
+      windowStateRef.current = nextState;
+      const capture = pointerCaptureRef.current;
+      if (capture?.element.hasPointerCapture(capture.pointerId)) {
+        capture.element.releasePointerCapture(capture.pointerId);
+      }
+      pointerCaptureRef.current = null;
+      interactionRef.current = { interactive: false, dragging: false };
+      setBoardLayout(cancelBoardDrag);
+      setGridRevision((revision) => revision + 1);
+    }
+    setWindowState(nextState);
+  }
 
   useEffect(() => {
     const bridge = window.dashboard;
@@ -99,12 +176,12 @@ export default function App() {
         startupBanner: `renderer flag=${__INPUT_DEBUG_ENABLED__}; preload flag=${bridge.inputDebugEnabled}; main bootstrap pending`,
       }));
     }
-    const unsubscribe = bridge.onWindowStateChange(setWindowState);
+    const unsubscribe = bridge.onWindowStateChange(applyRendererWindowState);
     const unsubscribeDebug = bridge.onInputDebugChange(setDebugSnapshot);
     void bridge
       .getWindowState()
       .then((state) => {
-        if (active) setWindowState(state);
+        if (active) applyRendererWindowState(state);
       })
       .catch((error: unknown) => {
         console.error("Failed to get overlay state:", error);
@@ -220,15 +297,17 @@ export default function App() {
         ? event.target.closest<HTMLElement>("[data-overlay-interactive]")
         : null;
     target?.setPointerCapture(event.pointerId);
-    pointerCaptureRef.current = target;
+    pointerCaptureRef.current = target
+      ? { element: target, pointerId: event.pointerId }
+      : null;
     reportPointer(true, true);
   }
 
   function handlePointerUp(event: React.PointerEvent<HTMLElement>): void {
     reportInputDebugEvent(event.nativeEvent, "pointerup");
-    const captureTarget = pointerCaptureRef.current;
-    if (captureTarget?.hasPointerCapture(event.pointerId)) {
-      captureTarget.releasePointerCapture(event.pointerId);
+    const capture = pointerCaptureRef.current;
+    if (capture?.element.hasPointerCapture(event.pointerId)) {
+      capture.element.releasePointerCapture(event.pointerId);
     }
     pointerCaptureRef.current = null;
     const target = document.elementFromPoint(event.clientX, event.clientY);
@@ -237,12 +316,49 @@ export default function App() {
 
   function handlePointerCancel(event: React.PointerEvent<HTMLElement>): void {
     reportInputDebugEvent(event.nativeEvent, "pointercancel");
-    const captureTarget = pointerCaptureRef.current;
-    if (captureTarget?.hasPointerCapture(event.pointerId)) {
-      captureTarget.releasePointerCapture(event.pointerId);
+    const capture = pointerCaptureRef.current;
+    if (capture?.element.hasPointerCapture(event.pointerId)) {
+      capture.element.releasePointerCapture(event.pointerId);
     }
     pointerCaptureRef.current = null;
     reportPointer(false, false);
+  }
+
+  function renderTile(tile: (typeof tiles)[number]) {
+    return (
+      <article
+        key={tile.id}
+        className={`dashboard-tile tile-${tile.id}`}
+        data-overlay-interactive
+        aria-labelledby={`${tile.id}-title`}
+      >
+        <header
+          className="tile-drag-handle"
+          data-no-capture={windowState === "edit" ? "" : undefined}
+        >
+          <span className="tile-label">{tile.label}</span>
+          <span className="tile-grip" aria-hidden="true">
+            ⠿
+          </span>
+        </header>
+        <h2 id={`${tile.id}-title`}>{tile.title}</h2>
+        <p>{tile.description}</p>
+        {tile.id === "webgl-check" && (
+          <>
+            <canvas
+              ref={canvasRef}
+              className="webgl-canvas"
+              width={220}
+              height={90}
+              aria-label="WebGL runtime check"
+            />
+            <p className="webgl-status" role="status">
+              {webglStatus}
+            </p>
+          </>
+        )}
+      </article>
+    );
   }
 
   return (
@@ -254,80 +370,90 @@ export default function App() {
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerCancel}
     >
-      <section
-        className="interactive-panel"
-        data-overlay-interactive
-        aria-labelledby="app-title"
-      >
-        {bridgeError && (
-          <aside className="bridge-error" role="alert">
-            {bridgeError}
-          </aside>
-        )}
-        <p className="eyebrow">M1 | OVERLAY SHELL</p>
-        <h1 id="app-title">Dashboard Overlay</h1>
-        <p className="description">
-          This placeholder panel is interactive. The transparent area around it
-          should pass clicks through in display mode.
-        </p>
-        <canvas
-          ref={canvasRef}
-          className="webgl-canvas"
-          width={240}
-          height={90}
-          aria-label="WebGL runtime check"
-        />
-        <p className="webgl-status" role="status">
-          {webglStatus}
-        </p>
-        <div className="panel-footer">
-          <button
-            className="test-button"
-            type="button"
-            onClick={(event) => {
-              reportInputDebugEvent(event.nativeEvent, "click");
-              setClickCount((count) => count + 1);
-            }}
-          >
-            Click test ({clickCount})
-          </button>
-          <span className="mode-indicator" role="status">
+      <div className="dashboard-frame">
+        <header className="dashboard-toolbar">
+          <div>
+            <p className="eyebrow">DASHBOARD OVERLAY</p>
+            <h1>Workspace</h1>
+          </div>
+          <p className="mode-cue" role="status">
             {windowState === "edit"
-              ? "Edit mode · Esc to exit"
-              : "Display mode"}
+              ? "EDITING · Drag tile headers · Esc to exit"
+              : "DISPLAY · Layout locked"}
+          </p>
+        </header>
+        <section
+          ref={containerRef}
+          className="dashboard-board"
+          aria-label="Dashboard tiles"
+        >
+          {mounted && width > 0 && (
+            <ReactGridLayout
+              key={gridRevision}
+              width={width}
+              layout={boardLayout.layout}
+              gridConfig={{
+                cols: 12,
+                rowHeight: 72,
+                margin: [16, 16],
+                containerPadding: [0, 0],
+                maxRows: 10,
+              }}
+              dragConfig={{
+                enabled: isBoardDraggable(windowState),
+                bounded: true,
+                handle: ".tile-drag-handle",
+              }}
+              resizeConfig={{ enabled: false }}
+              compactor={verticalCompactor}
+              className="dashboard-grid"
+              onDragStart={() => setBoardLayout(beginBoardDrag)}
+              onLayoutChange={(layout: Layout) =>
+                setBoardLayout((current) => updateBoardDrag(current, layout))
+              }
+              onDragStop={(layout: Layout) =>
+                setBoardLayout((current) => finishBoardDrag(current, layout))
+              }
+            >
+              {tiles.map(renderTile)}
+            </ReactGridLayout>
+          )}
+        </section>
+      </div>
+      {bridgeError && (
+        <aside className="bridge-error" role="alert">
+          {bridgeError}
+        </aside>
+      )}
+      {debugSnapshot.enabled && (
+        <aside className="input-debug" aria-label="Input diagnostics">
+          <strong>INPUT DIAGNOSTICS · {debugSnapshot.startupBanner}</strong>
+          <span>Pointer: {debugSnapshot.lastPointerEvent}</span>
+          <span>Click: {debugSnapshot.lastClick}</span>
+          <span>
+            Mode: {debugSnapshot.mode}; transitions since launch:{" "}
+            {debugSnapshot.hasModeTransitionSinceLaunch} (
+            {debugSnapshot.modeTransitionCount}); entered edit:{" "}
+            {debugSnapshot.hasEnteredEditModeSinceLaunch}; last transition:{" "}
+            {debugSnapshot.lastModeTransitionAt} (
+            {debugSnapshot.millisecondsSinceLastModeTransition} ms ago)
           </span>
-        </div>
-        {debugSnapshot.enabled && (
-          <aside className="input-debug" aria-label="Input diagnostics">
-            <strong>INPUT DIAGNOSTICS · {debugSnapshot.startupBanner}</strong>
-            <span>Pointer: {debugSnapshot.lastPointerEvent}</span>
-            <span>Click: {debugSnapshot.lastClick}</span>
-            <span>
-              Mode: {debugSnapshot.mode}; transitions since launch:{" "}
-              {debugSnapshot.hasModeTransitionSinceLaunch} (
-              {debugSnapshot.modeTransitionCount}); entered edit:{" "}
-              {debugSnapshot.hasEnteredEditModeSinceLaunch}; last transition:{" "}
-              {debugSnapshot.lastModeTransitionAt} (
-              {debugSnapshot.millisecondsSinceLastModeTransition} ms ago)
-            </span>
-            <span>
-              setIgnoreMouseEvents: {debugSnapshot.lastSetIgnoreMouseEvents}
-            </span>
-            <span>
-              Scale: {debugSnapshot.scaleFactor}; bounds:{" "}
-              {debugSnapshot.windowBounds}; work area:{" "}
-              {debugSnapshot.displayWorkArea}
-            </span>
-            <span>
-              Renderer: {debugSnapshot.rendererViewport} (current{" "}
-              {window.innerWidth}x{window.innerHeight} @
-              {window.devicePixelRatio})
-            </span>
-            <span>Initial setup: {debugSnapshot.initialWindowSetup}</span>
-            <span>Diagnostics log: {debugSnapshot.logFile}</span>
-          </aside>
-        )}
-      </section>
+          <span>
+            setIgnoreMouseEvents: {debugSnapshot.lastSetIgnoreMouseEvents}
+          </span>
+          <span>
+            Scale: {debugSnapshot.scaleFactor}; bounds:{" "}
+            {debugSnapshot.windowBounds}; work area:{" "}
+            {debugSnapshot.displayWorkArea}
+          </span>
+          <span>
+            Renderer: {debugSnapshot.rendererViewport} (current{" "}
+            {window.innerWidth}x{window.innerHeight} @{window.devicePixelRatio})
+          </span>
+          <span>Initial setup: {debugSnapshot.initialWindowSetup}</span>
+          <span>Diagnostics log: {debugSnapshot.logFile}</span>
+        </aside>
+      )}
     </main>
   );
 }
