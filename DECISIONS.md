@@ -74,7 +74,7 @@ Append-only. Newest entries go at the bottom. Never reuse or renumber an ID.
   - Hiding automatically for fullscreen apps: deferred because the current app has no reliable cross-process fullscreen detection mechanism.
   - Raising the overlay above fullscreen apps: rejected because it could obstruct presentations or video.
 - Impact / follow-ups:
-  - If the manual observation shows that the overlay obstructs fullscreen content, revisit the policy before treating M1 as accepted.
+  - The M1 YouTube fullscreen observation and acceptance with the grey-screen focus side effect as a known issue are recorded in 2026-11-10-06. Revisit before M6 if panel focus behavior needs to change.
 
 ## 2026-11-10-04 Bundle the sandboxed preload as CommonJS
 
@@ -98,3 +98,16 @@ Append-only. Newest entries go at the bottom. Never reuse or renumber an ID.
   - A click being consumed in the transparent part of the overlay during edit mode is expected behavior, not a click-through defect.
   - Keyboard-focus behavior has not been manually assessed with the current placeholder UI; do not infer it from clicks or Escape handling.
   - Revisit only if the product requirement changes.
+
+## 2026-11-10-06 Accept M1 with fullscreen focus side effect as known issue
+
+- Context: Decision 2026-11-10-03 required a revisit if the overlay affected fullscreen content. During a YouTube fullscreen check, interacting with the panel turned the video grey (appearing deactivated) while playback continued. Edit mode caused this immediately; returning to display mode restored the video, and hiding the overlay removed the effect. The suspected window focus/activation cause is unconfirmed. One report of a click inside the panel passing through was not reproduced. PowerPoint was not tested because it is not installed.
+- Decision: Keep the floating level and do not add fullscreen detection in M1. Accept M1 with the fullscreen focus appearance and unreproduced click-through report as known issues. The overlay does not hide or pause fullscreen content.
+- Alternatives considered and rejected:
+  - Hiding automatically for fullscreen apps: rejected because there is no reliable detection mechanism.
+  - Raising the overlay above fullscreen apps: rejected because it could obstruct content.
+  - Fixing activation behavior now: deferred as outside M1 scope.
+- Impact / follow-ups:
+  - Before M6, investigate whether panel clicks in display mode can avoid changing fullscreen focus.
+  - Re-test with PowerPoint on a PC where it is installed.
+  - Revisit the rare panel click-through case if it recurs.

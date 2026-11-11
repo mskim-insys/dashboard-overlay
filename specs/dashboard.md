@@ -56,7 +56,7 @@ Delivery
 ## Acceptance criteria
 
 - [x] M0: `dev` script opens an Electron window with hot reload; lint and format scripts pass; build and test commands are recorded in AGENTS.md.
-- [ ] M1 (R1-R4, R14): a translucent panel floats over the desktop, toggles by hotkey and tray, and does not block clicks on other apps in display mode. Manually check a single display at 100% and 125% scaling, plus mixed-scaling dual monitors if an external monitor is available; record the results in worklogs/dashboard.md.
+- [x] M1 (R1-R4, R14): a translucent panel floats over the desktop, toggles by hotkey and tray, and does not block clicks on other apps in display mode. Manually checked at 100% and 125%, with dual-monitor behavior reported as passing; results are in worklogs/dashboard.md. Accept the fullscreen focus appearance and unreproduced panel click-through report as known issues per [decision 2026-11-10-06](../DECISIONS.md#2026-11-10-06-accept-m1-with-fullscreen-focus-side-effect-as-known-issue).
 - [ ] M2 (R5): placeholder tiles can be rearranged in edit mode and are locked in display mode.
 - [ ] M3 (R6-R9): a launcher board of link widgets can be built, survives quit and relaunch unchanged, and clicking a link opens it. Targets outside the allowlist are refused.
 - [ ] M4 (R10): a layout exported on one PC imports on another PC and produces an identical board. A malformed or hostile file is rejected or sanitized, with a preview shown first.

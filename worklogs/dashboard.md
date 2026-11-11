@@ -5,15 +5,33 @@ Status: in progress
 
 ## Handover
 
-- Current milestone: M1 (acceptance criteria live in the spec)
-- Done and verified: M0 is complete. The sandboxed preload builds as bundled CommonJS at `out/preload/index.cjs`; the build check executes it with a mocked Electron bridge and verifies the exposed API keys. `preload-error` is logged in main regardless of debug mode, and the renderer displays/logs a visible error if `window.dashboard` is missing. Pointer capture is skipped on controls and their descendants, while plain panel-body capture and the main mouse policy remain unchanged. The fourth manual run confirmed the test-button click and count in display and edit mode. The fifth run confirmed stationary display-mode click-through outside the visible panel, click consumption inside the panel, pointerover/out and ignore-mouse transitions, and edit-mode consumption of clicks over transparent areas. Runs 4/5 used 125% scaling (`scaleFactor=1.25`). The Code Integrity query from the fifth run start (2026-11-10T15:35:54.056+09:00) returned 0 events.
-- Not done / partial: Keyboard focus has not been assessed; the current placeholder has no text field, and the user cannot confidently judge it. Hotkey and tray were reported as basically working earlier, but each requested action and display-mode focus retention were not individually recorded. Repeat 100% scaling and fullscreen checks on the fixed-preload build. Dual monitors are not tested; record unavailable if no second display and retain R14 as a pre-M6 risk. The fifth run's Code Integrity result is clean, but its WebGL-active visual status was not recorded. Panel-body drag-out did not activate the underlying app on that same release; test a separate subsequent outside click for stuck state. The missing-bridge error and startup banner have not been observed on screen. Drag and resize are not implemented in the M1 shell. The diagnostics log is `%APPDATA%\dashboard-overlay\input-diagnostics.log` (`C:\Users\In-sys\AppData\Roaming\dashboard-overlay\input-diagnostics.log`). Clean-clone `pnpm dev` still needs the Electron runtime download workaround described in README.md. Packaging spike (`electron-builder`, unsigned installer on a second PC with SAC on) is planned after M1.
-- First step next session: If M1 remains open, repeat the fixed-build 100% and fullscreen checks and confirm WebGL active; log exact hotkey/tray actions only if readily observable. Treat edit-mode transparent-area input as expected per DECISIONS.md 2026-11-10-05. For panel-body drag, test the subsequent outside click separately from the drag-release event. Keep main-process mouse policy unchanged.
-- Read first: `specs/dashboard.md`, `README.md`, `AGENTS.md`
+- Current milestone: M2 (acceptance criteria live in the spec)
+- Done and verified: M0 and M1 are complete. The sandboxed preload builds as bundled CommonJS at `out/preload/index.cjs`; the build check executes it with a mocked Electron bridge and verifies the exposed API keys. `preload-error` is logged in main regardless of debug mode, and the renderer displays/logs a visible error if `window.dashboard` is missing. Pointer capture is skipped on controls and their descendants, while plain panel-body capture and the main mouse policy remain unchanged. Manual checks confirm display-mode click-through, panel interaction and body drag, pointer boundary transitions, edit-mode input, hotkey, tray actions, single-monitor operation at 100% and 125%, WebGL visibility, and dual-monitor behavior. The final debug-off build and timed Electron 42.3.3 run produced 0 Code Integrity events 3033/3076/3077 and no `vk_swiftshader.dll` event (2026-11-10T16:51:07.712+09:00–16:52:34.953+09:00).
+- Not done / partial: The fullscreen YouTube grey-screen focus effect and one unreproduced panel click-through report are accepted known issues per [decision 2026-11-10-06](../DECISIONS.md#2026-11-10-06-accept-m1-with-fullscreen-focus-side-effect-as-known-issue); do not fix them in M1. PowerPoint was not tested because it is not installed. Keyboard focus has not otherwise been assessed with the placeholder UI. The missing-bridge error and startup banner have not been observed on screen. Drag and resize are not implemented in the M1 shell. The diagnostics log is `%APPDATA%\dashboard-overlay\input-diagnostics.log` (`C:\Users\In-sys\AppData\Roaming\dashboard-overlay\input-diagnostics.log`). Clean-clone `pnpm dev` still needs the Electron runtime download workaround described in README.md. Packaging spike (`electron-builder`, unsigned installer on a second PC with SAC on) remains planned.
+- First step next session: Begin M2. Before M6, investigate the fullscreen focus effect and retest with PowerPoint if available; revisit the unreproduced panel click-through case if it recurs.
+- Read first: `specs/dashboard.md`, `README.md`, `AGENTS.md`. `m0_postwork.md` is archived; do not look for it.
 - Traps: Keep Electron-only behavior behind the preload bridge; see DECISIONS.md 2026-11-09-03. Do not bypass application-control restrictions or upgrade Node/Electron without approval; see DECISIONS.md 2026-11-10-01.
 - Open questions: Code signing and SAC on colleagues' PCs; decision needed before M6. Owner: user.
 
 ## Sessions
+
+### 2026-11-10 · M1 close
+
+- Changed: Closed the M1 acceptance criterion and recorded the fullscreen behavior and rare click-through report as known issues per [decision 2026-11-10-06](../DECISIONS.md#2026-11-10-06-accept-m1-with-fullscreen-focus-side-effect-as-known-issue). No application code changed.
+- Verified: With `DASHBOARD_OVERLAY_DEBUG_INPUT` unset, `pnpm build` and the preload API check passed. The built Electron 42.3.3 app ran from 2026-11-10T16:51:07.712+09:00 through 16:52:34.953+09:00. Code Integrity Operational events 3033, 3076, and 3077: 0; no `vk_swiftshader.dll` event.
+- Risks / open: Keep the fullscreen grey-screen focus effect and unreproduced panel click-through report as known issues. PowerPoint was unavailable; retest before M6 if a machine with it is available.
+
+### 2026-11-10 · M1 manual regression follow-up
+
+- Changed: Recorded the user's manual results; no code or M1 acceptance checkbox changed.
+- Verified: The user reports panel-body drag, the `Ctrl+Alt+Shift+D` hotkey, tray actions, single-monitor 100% scaling, WebGL visibility, and dual-monitor behavior all passed. On dual monitors, the overlay stayed on the primary display and apps on the other display remained clickable even while the overlay was in edit mode; mixed scaling was not specified. The hotkey does not enter edit mode; edit mode is available from the tray, and the hotkey exits edit mode back to display mode. The later fullscreen triage clarified that YouTube playback continued while the video surface turned grey; see the triage entry below.
+- Risks / open: At the time, the fullscreen behavior had not been triaged; the later M1 decision accepts it as a known issue. Keyboard focus beyond this effect remains unassessed.
+
+### 2026-11-10 · M1 fullscreen triage
+
+- Changed: Corrected the fullscreen observation and recorded the acceptance decision; no code change.
+- Verified: In YouTube fullscreen, interacting with the overlay panel made the video appear grey/deactivated while playback continued. The effect appeared immediately in edit mode, reverted on return to display mode, and disappeared when the overlay was hidden. Focus/activation is a hypothesis, not confirmed by logs. PowerPoint was not tested because it is not installed. One reported display-mode click inside the panel passing through could not be reproduced.
+- Risks / open: Accept the fullscreen appearance and unreproduced panel click-through report as known issues under [decision 2026-11-10-06](../DECISIONS.md#2026-11-10-06-accept-m1-with-fullscreen-focus-side-effect-as-known-issue). Revisit focus behavior before M6, and retest PowerPoint if available.
 
 ### 2026-11-10 · Part B
 
@@ -32,15 +50,16 @@ Status: in progress
 - [x] Display mode: fifth run confirmed a stationary click in the transparent area outside the visible panel reaches the underlying app; clicks inside the panel are consumed. Fourth-run logs confirmed the test-button count increments.
 - [x] Pointer boundary: fifth run confirmed pointerover/out events and `setIgnoreMouseEvents` transitions.
 - [x] Edit mode input boundary: clicks in transparent areas are consumed as intended. Panel clicks and Escape exit have been exercised; keyboard focus is not assessed.
-- [ ] Panel-body drag: press an empty part of the panel, hold while crossing its visible edge, and release outside. The fifth run did not activate the underlying app on that same release; separately test whether a new click afterward reaches it. Window move/resize is not implemented in M1.
-- [ ] Hotkey: basic operation was reported earlier, but the complete hide/show/edit-exit sequence and typing in another app without focus loss are not individually recorded.
-- [ ] Tray: basic operation was reported earlier, but Show, Hide, Edit mode, and Quit are not individually recorded. A hotkey-conflict notice only matters if a conflict can be forced.
-- [ ] Single monitor at 100% scaling: repeat the required checks on the fixed-preload build; earlier 100% results came from the broken-preload build.
-- [x] Single monitor at 125% scaling: fourth and fifth run diagnostics report `scaleFactor=1.25`; panel and click behavior were usable in those runs. This does not cover the still-open focus/hotkey/fullscreen checks.
-- [ ] Mixed-scaling dual monitors: not tested. If no second display is available, retain as an explicit not-tested risk for R14 before M6.
-- [ ] Fullscreen observation: repeat once on the fixed-preload build with a PowerPoint slideshow or fullscreen video; record z-order and verify the fullscreen app remains usable.
-- [x] Code Integrity query: the fifth run started at 2026-11-10T15:35:54.056+09:00; events 3033/3076/3077 since then: 0. This verifies the event query only, not the WebGL canvas status.
-- [ ] WebGL: confirm the visible **WebGL canvas active** status during a final run; it was not recorded for the fifth run.
+- [x] Panel-body drag: user reports the test passed. Window move/resize is not implemented in M1.
+- [x] Hotkey: user reports `Ctrl+Alt+Shift+D` passed. It toggles visibility and exits edit mode to display mode; it does not enter edit mode.
+- [x] Tray: user reports the tray checks passed, including entering edit mode.
+- [x] Single monitor at 100% scaling: user reports the fixed-preload build passed.
+- [x] Single monitor at 125% scaling: fourth and fifth run diagnostics report `scaleFactor=1.25`; panel and click behavior were usable in those runs.
+- [x] Dual monitors: user reports no issue; the overlay stayed on the primary display and apps on the other display remained clickable, including while edit mode was active. The tested scaling combination was not specified.
+- [x] Fullscreen behavior: YouTube playback continued while the video surface turned grey when interacting with the panel; the effect reverted in display mode and disappeared when the overlay was hidden. Cause is unconfirmed. PowerPoint was not tested because it is not installed. Accepted as a known issue by [decision 2026-11-10-06](../DECISIONS.md#2026-11-10-06-accept-m1-with-fullscreen-focus-side-effect-as-known-issue).
+- [x] Code Integrity query: final debug-off Electron 42.3.3 run from 2026-11-10T16:51:07.712+09:00 to 16:52:34.953+09:00; events 3033/3076/3077: 0, including no `vk_swiftshader.dll`.
+- [x] WebGL: user confirms the visible WebGL canvas is active.
+- Known issues: The fullscreen grey-screen focus effect and one unreproduced panel click-through report are accepted for M1 by [decision 2026-11-10-06](../DECISIONS.md#2026-11-10-06-accept-m1-with-fullscreen-focus-side-effect-as-known-issue).
 - Not observed: the diagnostics startup banner and missing-bridge error have not been seen on screen; they are known UI gaps, not M1 blockers.
 
 ```powershell
